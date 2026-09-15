@@ -440,8 +440,12 @@ const RemoteAccessTab: React.FC = () => {
     loadData();
     const interval = setInterval(async () => {
       try {
-        const statusRes = await remoteAccessService.getStatus();
+        const [statusRes, settingsRes] = await Promise.all([
+          remoteAccessService.getStatus(),
+          remoteAccessService.getSettings(),
+        ]);
         setStatus(statusRes);
+        setSettings(settingsRes);
       } catch (e) {
         // ignore polling error
       }
