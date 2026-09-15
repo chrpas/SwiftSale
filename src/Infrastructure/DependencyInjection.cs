@@ -38,6 +38,10 @@ public static class DependencyInjection
 
         services.AddSingleton<ITokenService, JwtTokenService>();
 
+        services.AddSingleton<Services.RemoteAccess.NgrokRemoteAccessService>();
+        services.AddSingleton<IRemoteAccessService>(sp => sp.GetRequiredService<Services.RemoteAccess.NgrokRemoteAccessService>());
+        services.AddHostedService<Services.RemoteAccess.RemoteAccessBackgroundService>();
+
         return services;
     }
 }

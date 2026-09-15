@@ -15,6 +15,9 @@ import {
   ProfitReport,
   Category,
   ProblemDetails,
+  RemoteAccessStatus,
+  RemoteAccessSettings,
+  UpdateRemoteAccessSettingsRequest,
 } from '../types';
 
 export const apiClient = axios.create({
@@ -256,5 +259,28 @@ export const unitsService = {
   },
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/units/${id}`);
+  },
+};
+
+export const remoteAccessService = {
+  getStatus: async (): Promise<RemoteAccessStatus> => {
+    const response = await apiClient.get<RemoteAccessStatus>('/remote-access/status');
+    return response.data;
+  },
+  getSettings: async (): Promise<RemoteAccessSettings> => {
+    const response = await apiClient.get<RemoteAccessSettings>('/remote-access/settings');
+    return response.data;
+  },
+  updateSettings: async (data: UpdateRemoteAccessSettingsRequest): Promise<RemoteAccessSettings> => {
+    const response = await apiClient.put<RemoteAccessSettings>('/remote-access/settings', data);
+    return response.data;
+  },
+  start: async (): Promise<RemoteAccessStatus> => {
+    const response = await apiClient.post<RemoteAccessStatus>('/remote-access/start');
+    return response.data;
+  },
+  stop: async (): Promise<RemoteAccessStatus> => {
+    const response = await apiClient.post<RemoteAccessStatus>('/remote-access/stop');
+    return response.data;
   },
 };

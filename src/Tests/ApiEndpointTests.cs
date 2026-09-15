@@ -58,7 +58,11 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 public class ApiEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
     private readonly HttpClient _client;
-    private readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private readonly JsonSerializerOptions _jsonOptions = new() 
+    { 
+        PropertyNameCaseInsensitive = true,
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+    };
 
     public ApiEndpointTests(CustomWebApplicationFactory factory)
     {

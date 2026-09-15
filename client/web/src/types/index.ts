@@ -218,3 +218,35 @@ export interface ProblemDetails {
   detail?: string;
   errors?: Record<string, string[]>;
 }
+
+export enum RemoteAccessStatusState {
+  Disabled = 0,
+  Starting = 1,
+  Running = 2,
+  Stopped = 3,
+  Error = 4,
+  NgrokNotFound = 5,
+}
+
+export interface RemoteAccessStatus {
+  state: RemoteAccessStatusState;
+  publicUrl?: string;
+  localAddress?: string;
+  startedAt?: string;
+  errorMessage?: string;
+}
+
+export interface RemoteAccessSettings {
+  enabled: boolean;
+  ngrokPath: string;
+  hasAuthtoken: boolean;
+  autoStart: boolean;
+  ngrokVersion?: string;
+  isNgrokDetected: boolean;
+}
+
+export interface UpdateRemoteAccessSettingsRequest {
+  ngrokPath?: string;
+  authtoken?: string;
+  autoStart?: boolean;
+}
