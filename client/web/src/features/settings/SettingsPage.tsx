@@ -586,8 +586,8 @@ const RemoteAccessTab: React.FC = () => {
               <button
                 type="button"
                 onClick={handleStart}
-                disabled={actionLoading || !settings?.isNgrokDetected}
-                className="px-4 py-2 rounded-xl bg-[#0D7A5F] hover:bg-[#0B654E] text-white font-semibold text-xs transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+                disabled={actionLoading}
+                className="px-4 py-2 rounded-xl bg-[#0D7A5F] hover:bg-[#0B654E] text-white font-semibold text-xs transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
               >
                 {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wifi className="w-3.5 h-3.5" />}
                 <span>Start Remote Access</span>
