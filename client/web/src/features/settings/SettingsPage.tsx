@@ -518,9 +518,9 @@ const RemoteAccessTab: React.FC = () => {
     );
   }
 
-  const stateInt = status?.state ?? RemoteAccessStatusState.Disabled;
-  const isRunning = stateInt === RemoteAccessStatusState.Running;
-  const isStarting = stateInt === RemoteAccessStatusState.Starting;
+  const rawState = String(status?.state ?? '');
+  const isRunning = rawState === 'Running' || rawState === '2' || status?.state === RemoteAccessStatusState.Running;
+  const isStarting = rawState === 'Starting' || rawState === '1' || status?.state === RemoteAccessStatusState.Starting;
 
   return (
     <div className="space-y-6 p-2">

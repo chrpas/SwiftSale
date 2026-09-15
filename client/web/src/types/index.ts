@@ -220,12 +220,12 @@ export interface ProblemDetails {
 }
 
 export enum RemoteAccessStatusState {
-  Disabled = 0,
-  Starting = 1,
-  Running = 2,
-  Stopped = 3,
-  Error = 4,
-  NgrokNotFound = 5,
+  Disabled = 'Disabled',
+  Starting = 'Starting',
+  Running = 'Running',
+  Stopped = 'Stopped',
+  Error = 'Error',
+  NgrokNotFound = 'NgrokNotFound',
 }
 
 export interface RemoteAccessStatus {
