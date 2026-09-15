@@ -125,6 +125,19 @@ public class NgrokRemoteAccessService : IRemoteAccessService, IDisposable
     {
         await _semaphore.WaitAsync(cancellationToken);
         try {
+            // Check if an ngrok tunnel is already active (e.g. launched via CLI)
+            var existingPublicUrl = await FetchNgrokPublicUrlAsync(cancellationToken);
+            if (!string.IsNullOrEmpty(existingPublicUrl))
+            {
+                _state = RemoteAccessStatusState.Running;
+                _publicUrl = existingPublicUrl;
+                _localAddress = $"http://localhost:{GetLocalServerPort()}";
+                _startedAt ??= DateTime.UtcNow;
+                _errorMessage = null;
+                _logger.LogInformation("[RemoteAccess] Active ngrok tunnel discovered. Public URL: {PublicUrl}", _publicUrl);
+                return GetStatusInternal();
+            }
+
             if (_state == RemoteAccessStatusState.Running && (_ngrokProcess is { HasExited: false } || !string.IsNullOrEmpty(_publicUrl)))
             {
                 _logger.LogInformation("[RemoteAccess] Start requested but tunnel is already running.");
@@ -443,7 +456,6 @@ public class NgrokRemoteAccessService : IRemoteAccessService, IDisposable
     {
         try {
             var json = JsonSerializer.Serialize(_settings, new JsonSerializerOptions { WriteIndented = true });
-            File.ReadAllText(_settingsFilePath); // no-op check
             File.WriteAllText(_settingsFilePath, json);
         }
         catch (Exception ex)
