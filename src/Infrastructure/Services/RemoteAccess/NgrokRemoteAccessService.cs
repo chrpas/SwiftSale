@@ -52,6 +52,27 @@ public class NgrokRemoteAccessService : IRemoteAccessService, IDisposable
     {
         await _semaphore.WaitAsync(cancellationToken);
         try {
+            // Probe ngrok local inspection API for any active tunnel (CLI or service-managed)
+            var activePublicUrl = await FetchNgrokPublicUrlAsync(cancellationToken);
+            if (!string.IsNullOrEmpty(activePublicUrl))
+            {
+                _state = RemoteAccessStatusState.Running;
+                _publicUrl = activePublicUrl;
+                if (string.IsNullOrEmpty(_localAddress))
+                {
+                    _localAddress = $"http://localhost:{GetLocalServerPort()}";
+                }
+                _errorMessage = null;
+            }
+            else if (_ngrokProcess == null || _ngrokProcess.HasExited)
+            {
+                if (_state == RemoteAccessStatusState.Running)
+                {
+                    _state = RemoteAccessStatusState.Stopped;
+                    _publicUrl = null;
+                }
+            }
+
             return GetStatusInternal();
         }
         finally {
@@ -104,7 +125,7 @@ public class NgrokRemoteAccessService : IRemoteAccessService, IDisposable
     {
         await _semaphore.WaitAsync(cancellationToken);
         try {
-            if (_state == RemoteAccessStatusState.Running && _ngrokProcess is { HasExited: false })
+            if (_state == RemoteAccessStatusState.Running && (_ngrokProcess is { HasExited: false } || !string.IsNullOrEmpty(_publicUrl)))
             {
                 _logger.LogInformation("[RemoteAccess] Start requested but tunnel is already running.");
                 return GetStatusInternal();
@@ -259,10 +280,10 @@ public class NgrokRemoteAccessService : IRemoteAccessService, IDisposable
 
     private RemoteAccessSettingsDto GetSettingsInternal()
     {
-        var (detected, _, version) = DetectNgrok(_settings.NgrokPath);
+        var (detected, path, version) = DetectNgrok(_settings.NgrokPath);
         return new RemoteAccessSettingsDto(
             _state == RemoteAccessStatusState.Running,
-            _settings.NgrokPath,
+            detected ? (path ?? _settings.NgrokPath) : _settings.NgrokPath,
             !string.IsNullOrWhiteSpace(_settings.Authtoken),
             _settings.AutoStart,
             version,
@@ -272,33 +293,67 @@ public class NgrokRemoteAccessService : IRemoteAccessService, IDisposable
 
     private (bool Detected, string? ExecutablePath, string? Version) DetectNgrok(string configuredPath)
     {
-        string candidatePath = string.IsNullOrWhiteSpace(configuredPath) ? "ngrok" : configuredPath;
+        var candidates = new List<string>();
 
-        try {
-            var psi = new ProcessStartInfo
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            candidates.Add(configuredPath);
+        }
+
+        candidates.Add("ngrok");
+
+        // Windows WinGet and common paths search
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (!string.IsNullOrEmpty(localAppData))
+        {
+            var winGetPackageDir = Path.Combine(localAppData, "Microsoft", "WinGet", "Packages");
+            if (Directory.Exists(winGetPackageDir))
             {
-                FileName = candidatePath,
-                Arguments = "--version",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-
-            using var proc = Process.Start(psi);
-            if (proc != null)
-            {
-                var output = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit(3000);
-
-                if (proc.ExitCode == 0)
+                try
                 {
-                    var version = output.Trim();
-                    return (true, candidatePath, version);
+                    var matches = Directory.GetFiles(winGetPackageDir, "ngrok.exe", SearchOption.AllDirectories);
+                    candidates.AddRange(matches);
                 }
+                catch { }
             }
         }
-        catch { }
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrEmpty(userProfile))
+        {
+            candidates.Add(Path.Combine(userProfile, "ngrok.exe"));
+            candidates.Add(Path.Combine(userProfile, "AppData", "Local", "bin", "ngrok.exe"));
+        }
+
+        foreach (var candidatePath in candidates.Distinct())
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = candidatePath,
+                    Arguments = "--version",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                using var proc = Process.Start(psi);
+                if (proc != null)
+                {
+                    var output = proc.StandardOutput.ReadToEnd();
+                    proc.WaitForExit(3000);
+
+                    if (proc.ExitCode == 0)
+                    {
+                        var version = output.Trim();
+                        return (true, candidatePath, version);
+                    }
+                }
+            }
+            catch { }
+        }
 
         return (false, null, null);
     }
@@ -341,7 +396,18 @@ public class NgrokRemoteAccessService : IRemoteAccessService, IDisposable
 
     private int GetLocalServerPort()
     {
-        // Extracts launch port or default 5126
+        // In development, prefer 5173 (Vite Web App) if reachable so remote users access web interface
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
+            var response = client.GetAsync("http://localhost:5173").GetAwaiter().GetResult();
+            if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return 5173;
+            }
+        }
+        catch { }
+
         var urls = _configuration["ASPNETCORE_URLS"] ?? _configuration["Urls"];
         if (!string.IsNullOrEmpty(urls))
         {
