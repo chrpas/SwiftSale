@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: swiftsale_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: swiftsale_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../database/scripts:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d swiftsale_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - swiftsale_net
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.api
+    container_name: swiftsale_api
+    restart: unless-stopped
+    ports:
+      - "5126:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=swiftsale_db;Username=postgres;Password=postgrespassword
+      - JwtSettings__SecretKey=SwiftSale_SuperSecret_Key_AtLeast32Characters!!
+      - JwtSettings__Issuer=SwiftSaleApi
+      - JwtSettings__Audience=SwiftSaleClient
+      - JwtSettings__ExpiryMinutes=480
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - swiftsale_net
+
+  client:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.client
+    container_name: swiftsale_client
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    networks:
+      - swiftsale_net
+
+networks:
+  swiftsale_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

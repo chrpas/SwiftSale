@@ -1,0 +1,24 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+# Copy solution and project files
+COPY SwiftSale.sln ./
+COPY src/Domain/SwiftSale.Domain.csproj src/Domain/
+COPY src/Application/SwiftSale.Application.csproj src/Application/
+COPY src/Infrastructure/SwiftSale.Infrastructure.csproj src/Infrastructure/
+COPY src/Api/SwiftSale.Api.csproj src/Api/
+
+# Restore dependencies
+RUN dotnet restore src/Api/SwiftSale.Api.csproj
+
+# Copy source
+COPY src/ src/
+
+# Build and publish
+RUN dotnet publish src/Api/SwiftSale.Api.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "SwiftSale.Api.dll"]
