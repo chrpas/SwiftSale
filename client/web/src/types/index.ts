@@ -190,6 +190,59 @@ export interface DashboardMetrics {
   lowStockProducts?: LowStockProduct[];
 }
 
+export interface ReportFilterParams {
+  startDate?: string;
+  endDate?: string;
+  categoryId?: string;
+  productId?: string;
+  paymentMethod?: PaymentMethod | string;
+  inactivityThresholdDays?: number;
+}
+
+export interface ReportOverview {
+  totalSales: number;
+  totalOrders: number;
+  costOfGoodsSold: number;
+  grossProfit: number;
+  grossMarginPercent: number;
+  inventoryValue: number;
+  activeSkus: number;
+  lowStockCount: number;
+  totalUnitsOnHand: number;
+  outOfStockCount: number;
+}
+
+export interface SalesTrendItem {
+  date: string;
+  revenue: number;
+  grossProfit: number;
+  orderCount: number;
+}
+
+export interface TopProductReportItem {
+  productId: string;
+  sku: string;
+  name: string;
+  category: string;
+  quantitySold: number;
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  marginPercent: number;
+}
+
+export interface SlowMovingProductReportItem {
+  productId: string;
+  sku: string;
+  name: string;
+  category: string;
+  currentStock: number;
+  inventoryCost: number;
+  quantitySold: number;
+  daysSinceLastSale: number | null;
+  lastSaleDate: string | null;
+}
+
 export interface SalesReport {
   startDate: string;
   endDate: string;

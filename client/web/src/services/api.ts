@@ -13,6 +13,11 @@ import {
   SalesReport,
   InventoryReport,
   ProfitReport,
+  ReportOverview,
+  SalesTrendItem,
+  TopProductReportItem,
+  SlowMovingProductReportItem,
+  ReportFilterParams,
   Category,
   RemoteAccessStatus,
   RemoteAccessSettings,
@@ -200,6 +205,40 @@ export const dashboardService = {
 };
 
 export const reportsService = {
+  getOverview: async (filters?: ReportFilterParams): Promise<ReportOverview> => {
+    const response = await apiClient.get<ReportOverview>('/reports/overview', { params: filters });
+    return response.data;
+  },
+  getSalesTrend: async (filters?: ReportFilterParams): Promise<SalesTrendItem[]> => {
+    const response = await apiClient.get<SalesTrendItem[]>('/reports/sales-trend', { params: filters });
+    return response.data;
+  },
+  getTopProducts: async (filters?: ReportFilterParams, limit: number = 20): Promise<TopProductReportItem[]> => {
+    const response = await apiClient.get<TopProductReportItem[]>('/reports/top-products', {
+      params: { ...filters, limit },
+    });
+    return response.data;
+  },
+  getSlowMoving: async (filters?: ReportFilterParams): Promise<SlowMovingProductReportItem[]> => {
+    const response = await apiClient.get<SlowMovingProductReportItem[]>('/reports/slow-moving-products', { params: filters });
+    return response.data;
+  },
+  downloadPdf: async (filters?: ReportFilterParams): Promise<void> => {
+    const response = await apiClient.get('/reports/export/pdf', {
+      params: filters,
+      responseType: 'blob',
+    });
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const nowStr = new Date().toISOString().slice(0, 10);
+    link.setAttribute('download', `SwiftSale_Report_${nowStr}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode?.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
   getSalesReport: async (startDate?: string, endDate?: string): Promise<SalesReport> => {
     const params: Record<string, string> = {};
     if (startDate) params.startDate = startDate;
