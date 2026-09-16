@@ -11,11 +11,42 @@ using SwiftSale.Application.DTOs.Inventory;
 using SwiftSale.Application.DTOs.Products;
 using SwiftSale.Application.DTOs.Reports;
 using SwiftSale.Application.DTOs.Sales;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using SwiftSale.Domain.Entities;
 using SwiftSale.Domain.Enums;
 using SwiftSale.Infrastructure.Data;
 
 namespace SwiftSale.Tests;
+
+public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
+{
+    public TestAuthHandler(
+        IOptionsMonitor<AuthenticationSchemeOptions> options,
+        ILoggerFactory logger,
+        UrlEncoder encoder)
+        : base(options, logger, encoder)
+    {
+    }
+
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.Name, "testadmin"),
+            new Claim(ClaimTypes.NameIdentifier, "00000000-0000-0000-0000-000000000001"),
+            new Claim(ClaimTypes.Role, "Admin")
+        };
+        var identity = new ClaimsIdentity(claims, "TestScheme");
+        var principal = new ClaimsPrincipal(identity);
+        var ticket = new AuthenticationTicket(principal, "TestScheme");
+
+        return Task.FromResult(AuthenticateResult.Success(ticket));
+    }
+}
 
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 {
@@ -36,6 +67,12 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
+            services.AddAuthentication(options =>
+            {
+                options.DefaultAuthenticateScheme = "TestScheme";
+                options.DefaultChallengeScheme = "TestScheme";
+            }).AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("TestScheme", options => { });
+
             // Seed initial category for tests
             using var scope = services.BuildServiceProvider().CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -67,6 +104,7 @@ public class ApiEndpointTests : IClassFixture<CustomWebApplicationFactory>
     public ApiEndpointTests(CustomWebApplicationFactory factory)
     {
         _client = factory.CreateClient();
+        _client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("TestScheme");
     }
 
     [Fact]

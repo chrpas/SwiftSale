@@ -23,6 +23,8 @@ import {
   Category,
   CreateProductRequest,
 } from '../../types';
+import { AddProductModal } from './AddProductModal';
+import { EditProductModal } from './EditProductModal';
 
 export const ProductsPage: React.FC = () => {
   const { isAdmin } = useAuth();
@@ -37,10 +39,6 @@ export const ProductsPage: React.FC = () => {
   // Edit Product Modal State (Admin only)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Product | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editCategoryId, setEditCategoryId] = useState('');
-  const [editSubmitting, setEditSubmitting] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
 
   // Status Modal State (Discontinue or Reactivate, Admin only)
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
@@ -51,16 +49,6 @@ export const ProductsPage: React.FC = () => {
 
   // Add Product Modal State (Admin only)
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
-  const [newSku, setNewSku] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newCategoryId, setNewCategoryId] = useState('');
-  const [newUnitId, setNewUnitId] = useState('PCS');
-  const [newCostPrice, setNewCostPrice] = useState('0');
-  const [newSellingPrice, setNewSellingPrice] = useState('0');
-  const [newReorderLevel, setNewReorderLevel] = useState('10');
-  const [newInitialStock, setNewInitialStock] = useState('0');
-  const [addProductSubmitting, setAddProductSubmitting] = useState(false);
-  const [addProductError, setAddProductError] = useState<string | null>(null);
 
   useEffect(() => {
     loadProducts();
@@ -75,9 +63,6 @@ export const ProductsPage: React.FC = () => {
       ]);
       setProducts(prods);
       setCategories(cats);
-      if (cats.length > 0 && !newCategoryId) {
-        setNewCategoryId(cats[0].id);
-      }
     } catch (err) {
       setBannerMessage({
         text: getErrorMessage(err),
@@ -105,46 +90,17 @@ export const ProductsPage: React.FC = () => {
   const openEditModal = (product: Product) => {
     if (!isAdmin) return;
     setEditTarget(product);
-    setEditName(product.name);
-    setEditCategoryId(product.categoryId || categories[0]?.id || '');
-    setEditError(null);
     setIsEditModalOpen(true);
   };
 
   // Submit Edit Product
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editTarget) return;
-
-    if (!editName.trim()) {
-      setEditError('Product name is required.');
-      return;
-    }
-    if (!editCategoryId) {
-      setEditError('Please select a valid category.');
-      return;
-    }
-
-    try {
-      setEditSubmitting(true);
-      setEditError(null);
-
-      await productsService.update(editTarget.id, {
-        name: editName.trim(),
-        categoryId: editCategoryId,
-      });
-
-      setBannerMessage({
-        text: `Product specifications updated for "${editName.trim()}".`,
-        type: 'success',
-      });
-      setIsEditModalOpen(false);
-      await loadProducts();
-    } catch (err) {
-      setEditError(getErrorMessage(err));
-    } finally {
-      setEditSubmitting(false);
-    }
+  const handleEditSubmit = async (id: string, data: Partial<CreateProductRequest>) => {
+    await productsService.update(id, data);
+    setBannerMessage({
+      text: `Product specifications updated successfully for "${data.name || 'Product'}".`,
+      type: 'success',
+    });
+    await loadProducts();
   };
 
   // Open Status Modal (Discontinue or Reactivate)
@@ -189,77 +145,17 @@ export const ProductsPage: React.FC = () => {
 
   // Open Add Product Modal
   const openAddProductModal = () => {
-    setNewSku('');
-    setNewName('');
-    setNewCategoryId(categories[0]?.id || '');
-    setNewUnitId('PCS');
-    setNewCostPrice('0');
-    setNewSellingPrice('0');
-    setNewReorderLevel('10');
-    setNewInitialStock('0');
-    setAddProductError(null);
     setIsAddProductModalOpen(true);
   };
 
   // Submit Add Product
-  const handleAddProductSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!newSku.trim()) {
-      setAddProductError('SKU code is required.');
-      return;
-    }
-    if (!newName.trim()) {
-      setAddProductError('Product name is required.');
-      return;
-    }
-    if (!newCategoryId) {
-      setAddProductError('Please select a category.');
-      return;
-    }
-
-    const cost = parseFloat(newCostPrice);
-    const sell = parseFloat(newSellingPrice);
-    const reorder = parseFloat(newReorderLevel);
-    const initial = parseFloat(newInitialStock);
-
-    if (isNaN(cost) || cost < 0) {
-      setAddProductError('Cost price must be a non-negative number.');
-      return;
-    }
-    if (isNaN(sell) || sell < 0) {
-      setAddProductError('Selling price must be a non-negative number.');
-      return;
-    }
-
-    try {
-      setAddProductSubmitting(true);
-      setAddProductError(null);
-
-      const request: CreateProductRequest = {
-        sku: newSku.trim().toUpperCase(),
-        name: newName.trim(),
-        categoryId: newCategoryId,
-        unitId: newUnitId.trim().toUpperCase() || 'PCS',
-        costPrice: cost,
-        sellingPrice: sell,
-        reorderLevel: isNaN(reorder) ? 10 : reorder,
-        initialStock: isNaN(initial) ? 0 : initial,
-      };
-
-      await productsService.create(request);
-
-      setBannerMessage({
-        text: `New product "${request.name}" created successfully.`,
-        type: 'success',
-      });
-      setIsAddProductModalOpen(false);
-      await loadProducts();
-    } catch (err) {
-      setAddProductError(getErrorMessage(err));
-    } finally {
-      setAddProductSubmitting(false);
-    }
+  const handleAddProductSubmit = async (data: CreateProductRequest) => {
+    await productsService.create(data);
+    setBannerMessage({
+      text: `New product "${data.name}" created successfully.`,
+      type: 'success',
+    });
+    await loadProducts();
   };
 
   return (
@@ -451,8 +347,17 @@ export const ProductsPage: React.FC = () => {
                     <td className="py-3 px-4 text-right text-emerald-400 font-bold">
                       ₱{p.sellingPrice.toFixed(2)}
                     </td>
-                    <td className="py-3 px-4 text-right font-bold text-white">
-                      {p.quantityOnHand}
+                    <td className="py-3 px-4 text-right">
+                      <div className="font-bold">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-slate-800 text-emerald-400 border border-slate-700">
+                          {p.quantityOnHand} PCS
+                        </span>
+                      </div>
+                      {((p.piecesPerBox && p.piecesPerBox > 1) || false) && (
+                        <div className="text-[11px] text-slate-400 mt-0.5 font-medium">
+                          {Math.floor(p.quantityOnHand / (p.piecesPerBox || 1))} {Math.floor(p.quantityOnHand / (p.piecesPerBox || 1)) === 1 ? 'box' : 'boxes'}{p.quantityOnHand % (p.piecesPerBox || 1) > 0 ? `, ${p.quantityOnHand % (p.piecesPerBox || 1)} pcs` : ''}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span
@@ -508,104 +413,13 @@ export const ProductsPage: React.FC = () => {
       </div>
 
       {/* Edit Product Modal (Admin Only) */}
-      {isEditModalOpen && editTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2 text-white font-bold text-lg">
-                <Pencil className="w-5 h-5 text-indigo-400" />
-                <span>Edit Product</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsEditModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Product Meta Pill */}
-            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">SKU Code</p>
-                <p className="text-sm font-mono font-bold text-white mt-0.5">{editTarget.sku}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Current Stock</p>
-                <p className="text-sm font-bold text-indigo-300 mt-0.5">
-                  {editTarget.quantityOnHand} <span className="text-xs font-normal text-slate-400">{editTarget.unitId || 'units'}</span>
-                </p>
-              </div>
-            </div>
-
-            {editError && (
-              <div className="rounded-xl p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
-                <span>{editError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                  Product Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Enter product title"
-                  className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-white text-sm focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                  Category *
-                </label>
-                <select
-                  value={editCategoryId}
-                  onChange={(e) => setEditCategoryId(e.target.value)}
-                  className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="" disabled>Select category</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-slate-800 bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-semibold text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={editSubmitting}
-                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
-                >
-                  {editSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <span>Save Changes</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <EditProductModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        categories={categories}
+        product={editTarget}
+        onSubmit={handleEditSubmit}
+      />
 
       {/* Discontinue / Reactivate Confirmation Modal (Admin Only) */}
       {isStatusModalOpen && statusTarget && (
@@ -700,177 +514,12 @@ export const ProductsPage: React.FC = () => {
       )}
 
       {/* Add Product Modal (Admin Only) */}
-      {isAddProductModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2 text-white font-bold text-lg">
-                <Plus className="w-5 h-5 text-indigo-400" />
-                <span>Add New Product</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAddProductModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {addProductError && (
-              <div className="rounded-xl p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
-                <span>{addProductError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleAddProductSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    SKU *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. ELEC-001"
-                    value={newSku}
-                    onChange={(e) => setNewSku(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-white font-mono text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Product Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Wireless Mouse"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-white text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Category
-                  </label>
-                  <select
-                    value={newCategoryId}
-                    onChange={(e) => setNewCategoryId(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
-                  >
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Unit Identifier
-                  </label>
-                  <input
-                    type="text"
-                    value={newUnitId}
-                    onChange={(e) => setNewUnitId(e.target.value)}
-                    placeholder="PCS, BOX, KG"
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:border-indigo-500 uppercase"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Cost Price (₱)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    value={newCostPrice}
-                    onChange={(e) => setNewCostPrice(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-white font-semibold text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Selling Price (₱)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    value={newSellingPrice}
-                    onChange={(e) => setNewSellingPrice(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-emerald-400 font-semibold text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Reorder Alert Level
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={newReorderLevel}
-                    onChange={(e) => setNewReorderLevel(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-white text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Initial Stock In
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={newInitialStock}
-                    onChange={(e) => setNewInitialStock(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-indigo-300 font-bold text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddProductModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-slate-800 bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-semibold text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addProductSubmitting}
-                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
-                >
-                  {addProductSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Creating...</span>
-                    </>
-                  ) : (
-                    <span>Create Product</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AddProductModal
+        isOpen={isAddProductModalOpen}
+        onClose={() => setIsAddProductModalOpen(false)}
+        categories={categories}
+        onSubmit={handleAddProductSubmit}
+      />
     </div>
   );
 };

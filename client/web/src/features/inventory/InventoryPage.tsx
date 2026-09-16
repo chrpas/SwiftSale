@@ -30,6 +30,8 @@ import {
   CreateStockAdjustmentRequest,
   CreateProductRequest,
 } from '../../types';
+import { AddProductModal } from '../products/AddProductModal';
+import { EditProductModal, EditProductData } from '../products/EditProductModal';
 
 export const InventoryPage: React.FC = () => {
   const { isAdmin } = useAuth();
@@ -52,11 +54,7 @@ export const InventoryPage: React.FC = () => {
 
   // Edit Product Modal State (Admin only)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<InventoryBalance | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editCategoryId, setEditCategoryId] = useState('');
-  const [editSubmitting, setEditSubmitting] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
+  const [editProductData, setEditProductData] = useState<EditProductData | null>(null);
 
   // Discontinue / Reactivate Modal State (Admin only)
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
@@ -67,16 +65,6 @@ export const InventoryPage: React.FC = () => {
 
   // Add Product Modal State
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
-  const [newSku, setNewSku] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newCategoryId, setNewCategoryId] = useState('');
-  const [newUnitId, setNewUnitId] = useState('PCS');
-  const [newCostPrice, setNewCostPrice] = useState('10.00');
-  const [newSellingPrice, setNewSellingPrice] = useState('20.00');
-  const [newReorderLevel, setNewReorderLevel] = useState('5');
-  const [newInitialStock, setNewInitialStock] = useState('10');
-  const [addProductSubmitting, setAddProductSubmitting] = useState(false);
-  const [addProductError, setAddProductError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -91,9 +79,6 @@ export const InventoryPage: React.FC = () => {
       ]);
       setBalances(invBalances);
       setCategories(catList);
-      if (catList.length > 0 && !newCategoryId) {
-        setNewCategoryId(catList[0].id);
-      }
     } catch (err) {
       console.error('Failed to load inventory data', err);
       setBannerMessage({
@@ -137,52 +122,51 @@ export const InventoryPage: React.FC = () => {
   };
 
   // Open edit modal for Admin
-  const openEditModal = (balance: InventoryBalance) => {
+  const openEditModal = async (balance: InventoryBalance) => {
     if (!isAdmin) return;
-    setEditTarget(balance);
-    setEditName(balance.productName);
-    const matchedCategory = categories.find(
-      (c) => c.id === balance.categoryId || c.name === balance.categoryName
-    );
-    setEditCategoryId(balance.categoryId || matchedCategory?.id || categories[0]?.id || '');
-    setEditError(null);
+    try {
+      const fullProduct = await productsService.getById(balance.productId);
+      setEditProductData({
+        id: fullProduct.id,
+        sku: fullProduct.sku,
+        name: fullProduct.name,
+        categoryId: fullProduct.categoryId,
+        categoryName: fullProduct.categoryName,
+        unitIdentifier: fullProduct.unitIdentifier,
+        unitId: fullProduct.unitId,
+        piecesPerBox: fullProduct.piecesPerBox,
+        costPrice: fullProduct.costPrice,
+        sellingPrice: fullProduct.sellingPrice,
+        reorderLevel: fullProduct.reorderLevel,
+        quantityOnHand: fullProduct.quantityOnHand ?? balance.quantityOnHand,
+        description: fullProduct.description,
+      });
+    } catch {
+      setEditProductData({
+        id: balance.productId,
+        sku: balance.productSKU,
+        name: balance.productName,
+        categoryId: balance.categoryId || '',
+        categoryName: balance.categoryName,
+        unitIdentifier: balance.unitIdentifier || 'PCS',
+        piecesPerBox: balance.piecesPerBox || 1,
+        costPrice: balance.averageCost,
+        sellingPrice: balance.sellingPrice,
+        reorderLevel: balance.reorderLevel,
+        quantityOnHand: balance.quantityOnHand,
+      });
+    }
     setIsEditModalOpen(true);
   };
 
   // Submit edit product
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editTarget) return;
-
-    if (!editName.trim()) {
-      setEditError('Product name is required.');
-      return;
-    }
-    if (!editCategoryId) {
-      setEditError('Please select a valid category.');
-      return;
-    }
-
-    try {
-      setEditSubmitting(true);
-      setEditError(null);
-
-      await productsService.update(editTarget.productId, {
-        name: editName.trim(),
-        categoryId: editCategoryId,
-      });
-
-      setBannerMessage({
-        text: `Product specifications updated for "${editName.trim()}".`,
-        type: 'success',
-      });
-      setIsEditModalOpen(false);
-      await loadData();
-    } catch (err) {
-      setEditError(getErrorMessage(err));
-    } finally {
-      setEditSubmitting(false);
-    }
+  const handleEditSubmit = async (id: string, data: Partial<CreateProductRequest>) => {
+    await productsService.update(id, data);
+    setBannerMessage({
+      text: `Product specifications updated successfully for "${data.name || 'Product'}".`,
+      type: 'success',
+    });
+    await loadData();
   };
 
   // Open status modal (Discontinue or Reactivate)
@@ -269,46 +253,13 @@ export const InventoryPage: React.FC = () => {
   };
 
   // Submit new product
-  const handleAddProductSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!newSku.trim() || !newName.trim()) {
-      setAddProductError('SKU and Product Name are required.');
-      return;
-    }
-
-    try {
-      setAddProductSubmitting(true);
-      setAddProductError(null);
-
-      const payload: CreateProductRequest = {
-        sku: newSku.trim().toUpperCase(),
-        name: newName.trim(),
-        categoryId: newCategoryId || categories[0]?.id || '11111111-1111-1111-1111-111111111111',
-        unitId: newUnitId.trim().toUpperCase(),
-        costPrice: parseFloat(newCostPrice) || 0,
-        sellingPrice: parseFloat(newSellingPrice) || 0,
-        reorderLevel: parseInt(newReorderLevel, 10) || 0,
-        initialStock: parseFloat(newInitialStock) || 0,
-      };
-
-      await productsService.create(payload);
-
-      setBannerMessage({
-        text: `Product "${payload.name}" (${payload.sku}) created with ${payload.initialStock} initial stock.`,
-        type: 'success',
-      });
-      setIsAddProductModalOpen(false);
-      // Reset fields
-      setNewSku('');
-      setNewName('');
-      await loadData();
-    } catch (err) {
-      const msg = getErrorMessage(err);
-      setAddProductError(msg);
-    } finally {
-      setAddProductSubmitting(false);
-    }
+  const handleAddProductSubmit = async (payload: CreateProductRequest) => {
+    await productsService.create(payload);
+    setBannerMessage({
+      text: `Product "${payload.name}" (${payload.sku}) created with ${payload.initialStock} initial stock.`,
+      type: 'success',
+    });
+    await loadData();
   };
 
   return (
@@ -505,8 +456,17 @@ export const InventoryPage: React.FC = () => {
                       <td className="py-3 px-4 text-slate-400 text-xs">
                         {item.categoryName || '—'}
                       </td>
-                      <td className="py-3 px-4 text-right font-bold text-white">
-                        {item.quantityOnHand}
+                      <td className="py-3 px-4 text-right">
+                        <div className="font-bold">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-slate-800 text-emerald-400 border border-slate-700">
+                            {item.quantityOnHand} PCS
+                          </span>
+                        </div>
+                        {((item.piecesPerBox && item.piecesPerBox > 1) || false) && (
+                          <div className="text-[11px] text-slate-400 mt-0.5 font-medium">
+                            {Math.floor(item.quantityOnHand / (item.piecesPerBox || 1))} {Math.floor(item.quantityOnHand / (item.piecesPerBox || 1)) === 1 ? 'box' : 'boxes'}{item.quantityOnHand % (item.piecesPerBox || 1) > 0 ? `, ${item.quantityOnHand % (item.piecesPerBox || 1)} pcs` : ''}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right text-slate-400">
                         {item.reorderLevel ?? '—'}
@@ -541,11 +501,11 @@ export const InventoryPage: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => openAdjustModal(item)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-indigo-600 hover:border-indigo-500 text-slate-200 hover:text-white text-xs font-medium transition-all"
+                            className="p-2 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-indigo-600 hover:border-indigo-500 text-slate-200 hover:text-white transition-all shadow-sm"
                             title="Adjust Stock Quantity"
+                            aria-label="Adjust Stock Quantity"
                           >
                             <SlidersHorizontal className="w-3.5 h-3.5" />
-                            <span>Adjust</span>
                           </button>
 
                           {isAdmin && (
@@ -554,11 +514,11 @@ export const InventoryPage: React.FC = () => {
                                 type="button"
                                 id={`btn-edit-product-${item.productId}`}
                                 onClick={() => openEditModal(item)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-teal-600 hover:border-teal-500 text-slate-200 hover:text-white text-xs font-medium transition-all"
-                                title="Edit Product Name & Category"
+                                className="p-2 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-teal-600 hover:border-teal-500 text-teal-400 hover:text-white transition-all shadow-sm"
+                                title="Edit Product Details"
+                                aria-label="Edit Product Details"
                               >
-                                <Pencil className="w-3.5 h-3.5 text-teal-400" />
-                                <span>Edit</span>
+                                <Pencil className="w-3.5 h-3.5" />
                               </button>
 
                               {item.isActive !== false ? (
@@ -566,22 +526,22 @@ export const InventoryPage: React.FC = () => {
                                   type="button"
                                   id={`btn-discontinue-${item.productId}`}
                                   onClick={() => openStatusModal(item, 'discontinue')}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-rose-900/40 bg-rose-950/40 hover:bg-rose-600 hover:border-rose-500 text-rose-300 hover:text-white text-xs font-medium transition-all"
+                                  className="p-2 rounded-lg border border-rose-900/40 bg-rose-950/40 hover:bg-rose-600 hover:border-rose-500 text-rose-400 hover:text-white transition-all shadow-sm"
                                   title="Discontinue Product"
+                                  aria-label="Discontinue Product"
                                 >
-                                  <Archive className="w-3.5 h-3.5 text-rose-400" />
-                                  <span>Discontinue</span>
+                                  <Archive className="w-3.5 h-3.5" />
                                 </button>
                               ) : (
                                 <button
                                   type="button"
                                   id={`btn-activate-${item.productId}`}
                                   onClick={() => openStatusModal(item, 'activate')}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-900/40 bg-emerald-950/40 hover:bg-emerald-600 hover:border-emerald-500 text-emerald-300 hover:text-white text-xs font-medium transition-all"
+                                  className="p-2 rounded-lg border border-emerald-900/40 bg-emerald-950/40 hover:bg-emerald-600 hover:border-emerald-500 text-emerald-400 hover:text-white transition-all shadow-sm"
                                   title="Reactivate Product"
+                                  aria-label="Reactivate Product"
                                 >
-                                  <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
-                                  <span>Reactivate</span>
+                                  <RotateCcw className="w-3.5 h-3.5" />
                                 </button>
                               )}
                             </>
@@ -725,277 +685,21 @@ export const InventoryPage: React.FC = () => {
       )}
 
       {/* Add Product Modal */}
-      {isAddProductModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2 text-white font-bold text-lg">
-                <Plus className="w-5 h-5 text-indigo-400" />
-                <span>Add New Product</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAddProductModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {addProductError && (
-              <div className="rounded-xl p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
-                <span>{addProductError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleAddProductSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    SKU *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. ELEC-001"
-                    value={newSku}
-                    onChange={(e) => setNewSku(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-white font-mono text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Product Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Wireless Mouse"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-white text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Category
-                  </label>
-                  <select
-                    value={newCategoryId}
-                    onChange={(e) => setNewCategoryId(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
-                  >
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Unit Identifier
-                  </label>
-                  <input
-                    type="text"
-                    value={newUnitId}
-                    onChange={(e) => setNewUnitId(e.target.value)}
-                    placeholder="PCS, BOX, KG"
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:border-indigo-500 uppercase"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Cost Price (₱)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    value={newCostPrice}
-                    onChange={(e) => setNewCostPrice(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-white font-semibold text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Selling Price (₱)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    value={newSellingPrice}
-                    onChange={(e) => setNewSellingPrice(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-emerald-400 font-semibold text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Reorder Alert Level
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={newReorderLevel}
-                    onChange={(e) => setNewReorderLevel(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-white text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Initial Stock In
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={newInitialStock}
-                    onChange={(e) => setNewInitialStock(e.target.value)}
-                    className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-indigo-300 font-bold text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddProductModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-slate-800 bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-semibold text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addProductSubmitting}
-                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
-                >
-                  {addProductSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Creating...</span>
-                    </>
-                  ) : (
-                    <span>Create Product</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AddProductModal
+        isOpen={isAddProductModalOpen}
+        onClose={() => setIsAddProductModalOpen(false)}
+        categories={categories}
+        onSubmit={handleAddProductSubmit}
+      />
 
       {/* Edit Product Modal (Admin Only) */}
-      {isEditModalOpen && editTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2 text-white font-bold text-lg">
-                <Pencil className="w-5 h-5 text-indigo-400" />
-                <span>Edit Product</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsEditModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Product Meta Pill */}
-            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">SKU Code</p>
-                <p className="text-sm font-mono font-bold text-white mt-0.5">{editTarget.productSKU}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Current Stock</p>
-                <p className="text-sm font-bold text-indigo-300 mt-0.5">
-                  {editTarget.quantityOnHand} <span className="text-xs font-normal text-slate-400">units</span>
-                </p>
-              </div>
-            </div>
-
-            {editError && (
-              <div className="rounded-xl p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
-                <span>{editError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                  Product Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Enter product title"
-                  className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-white text-sm focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                  Category *
-                </label>
-                <select
-                  value={editCategoryId}
-                  onChange={(e) => setEditCategoryId(e.target.value)}
-                  className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="" disabled>Select category</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-slate-800 bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-semibold text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={editSubmitting}
-                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
-                >
-                  {editSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <span>Save Changes</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <EditProductModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        categories={categories}
+        product={editProductData}
+        onSubmit={handleEditSubmit}
+      />
 
       {/* Discontinue / Reactivate Modal (Admin Only) */}
       {isStatusModalOpen && statusTarget && (

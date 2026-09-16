@@ -38,7 +38,8 @@ public class DashboardService : IDashboardService
         decimal todayCost = todaySalesList.SelectMany(s => s.Items).Sum(i =>
         {
             var avgCost = i.Product?.InventoryBalance?.AverageCost ?? i.Product?.CostPrice ?? 0m;
-            return i.Quantity * avgCost;
+            var baseQty = i.BaseQuantityDeducted > 0 ? i.BaseQuantityDeducted : i.Quantity;
+            return baseQty * avgCost;
         });
         decimal todayGrossProfit = todaySales - todayCost;
 
@@ -47,7 +48,8 @@ public class DashboardService : IDashboardService
         decimal monthCost = sales.SelectMany(s => s.Items).Sum(i =>
         {
             var avgCost = i.Product?.InventoryBalance?.AverageCost ?? i.Product?.CostPrice ?? 0m;
-            return i.Quantity * avgCost;
+            var baseQty = i.BaseQuantityDeducted > 0 ? i.BaseQuantityDeducted : i.Quantity;
+            return baseQty * avgCost;
         });
         decimal monthGrossProfit = monthSales - monthCost;
         decimal monthMargin = monthSales > 0 ? Math.Round((monthGrossProfit / monthSales) * 100m, 2) : 0m;

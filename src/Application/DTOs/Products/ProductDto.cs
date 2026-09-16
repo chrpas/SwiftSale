@@ -15,5 +15,8 @@ public record ProductDto(
     decimal ReservedQuantity,
     decimal QuantityAvailable,
     decimal AverageCost,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    string UnitIdentifier = "PCS",
+    int PiecesPerBox = 1,
+    string? Description = null
 );

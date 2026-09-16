@@ -38,6 +38,9 @@ export interface Product {
   categoryId: string;
   categoryName?: string;
   unitId: string;
+  unitIdentifier?: string;
+  piecesPerBox?: number;
+  description?: string;
   costPrice: number;
   sellingPrice: number;
   reorderLevel: number;
@@ -51,11 +54,14 @@ export interface CreateProductRequest {
   sku: string;
   name: string;
   categoryId: string;
-  unitId: string;
+  unitId?: string;
+  unitIdentifier?: string;
   costPrice: number;
   sellingPrice: number;
   reorderLevel: number;
   initialStock: number;
+  piecesPerBox?: number;
+  description?: string;
 }
 
 export interface InventoryBalance {
@@ -73,6 +79,8 @@ export interface InventoryBalance {
   totalValuation: number;
   isActive?: boolean;
   isLowStock?: boolean;
+  piecesPerBox?: number;
+  unitIdentifier?: string;
 }
 
 export interface StockMovement {
@@ -105,6 +113,9 @@ export interface SaleItem {
   unitPrice: number;
   discount: number;
   total: number;
+  unitSold?: 'PCS' | 'BOX' | string;
+  quantitySold?: number;
+  baseQuantityDeducted?: number;
 }
 
 export interface Payment {
@@ -136,6 +147,7 @@ export interface CreateSaleItemRequest {
   quantity: number;
   unitPrice: number;
   discount?: number;
+  unitSold?: 'PCS' | 'BOX' | string;
 }
 
 export interface CreatePaymentRequest {

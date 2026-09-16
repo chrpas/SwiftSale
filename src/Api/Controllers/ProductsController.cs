@@ -70,14 +70,18 @@ public class ProductsController : ControllerBase
     public async Task<ActionResult<ProductDto>> Update(Guid id, [FromBody] UpdateProductRequest request, CancellationToken cancellationToken = default)
     {
         var existing = await _productService.GetByIdAsync(id, cancellationToken);
+        var unit = request.UnitIdentifier ?? request.UnitId ?? existing.UnitIdentifier;
         var dto = new UpdateProductDto(
             request.Name,
             request.CategoryId,
-            request.UnitId ?? existing.UnitId,
+            unit,
             request.CostPrice ?? existing.CostPrice,
             request.SellingPrice ?? existing.SellingPrice,
             request.ReorderLevel ?? existing.ReorderLevel,
-            request.IsActive ?? existing.IsActive
+            request.IsActive ?? existing.IsActive,
+            unit,
+            request.PiecesPerBox ?? existing.PiecesPerBox,
+            request.Description ?? existing.Description
         );
 
         var updated = await _productService.UpdateAsync(id, dto, cancellationToken);
@@ -118,5 +122,8 @@ public record UpdateProductRequest(
     decimal? CostPrice = null,
     decimal? SellingPrice = null,
     int? ReorderLevel = null,
-    bool? IsActive = null
+    bool? IsActive = null,
+    string? UnitIdentifier = null,
+    int? PiecesPerBox = null,
+    string? Description = null
 );

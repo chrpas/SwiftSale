@@ -48,9 +48,10 @@ public class ReportingService : IReportingService, IReportService
                 if (filters.CategoryId.HasValue && item.Product?.CategoryId != filters.CategoryId.Value)
                     continue;
 
-                decimal itemRevenue = (item.Quantity * item.UnitPrice) - item.Discount;
+                decimal itemRevenue = item.Total > 0 ? item.Total : ((item.Quantity * item.UnitPrice) - item.Discount);
                 decimal itemAvgCost = item.Product?.InventoryBalance?.AverageCost ?? item.Product?.CostPrice ?? 0m;
-                decimal itemCost = item.Quantity * itemAvgCost;
+                decimal baseQty = item.BaseQuantityDeducted > 0 ? item.BaseQuantityDeducted : item.Quantity;
+                decimal itemCost = baseQty * itemAvgCost;
 
                 totalSales += itemRevenue;
                 totalCogs += itemCost;
@@ -133,9 +134,10 @@ public class ReportingService : IReportingService, IReportService
                         if (filters.CategoryId.HasValue && i.Product?.CategoryId != filters.CategoryId.Value)
                             continue;
 
-                        dayRev += (i.Quantity * i.UnitPrice) - i.Discount;
+                        dayRev += i.Total > 0 ? i.Total : ((i.Quantity * i.UnitPrice) - i.Discount);
                         var avgCost = i.Product?.InventoryBalance?.AverageCost ?? i.Product?.CostPrice ?? 0m;
-                        dayCogs += (i.Quantity * avgCost);
+                        var baseQty = i.BaseQuantityDeducted > 0 ? i.BaseQuantityDeducted : i.Quantity;
+                        dayCogs += (baseQty * avgCost);
                     }
                 }
 
@@ -181,12 +183,13 @@ public class ReportingService : IReportingService, IReportService
             })
             .Select(g =>
             {
-                decimal qty = g.Sum(x => x.Quantity);
-                decimal rev = g.Sum(x => (x.Quantity * x.UnitPrice) - x.Discount);
+                decimal qty = g.Sum(x => x.BaseQuantityDeducted > 0 ? x.BaseQuantityDeducted : x.Quantity);
+                decimal rev = g.Sum(x => x.Total > 0 ? x.Total : ((x.Quantity * x.UnitPrice) - x.Discount));
                 decimal cogs = g.Sum(x =>
                 {
                     var avgCost = x.Product?.InventoryBalance?.AverageCost ?? x.Product?.CostPrice ?? 0m;
-                    return x.Quantity * avgCost;
+                    var baseQty = x.BaseQuantityDeducted > 0 ? x.BaseQuantityDeducted : x.Quantity;
+                    return baseQty * avgCost;
                 });
                 decimal profit = rev - cogs;
                 decimal margin = rev > 0m ? Math.Round((profit / rev) * 100m, 2) : 0m;
@@ -203,7 +206,8 @@ public class ReportingService : IReportingService, IReportService
                     MarginPercent: margin
                 );
             })
-            .OrderByDescending(x => x.Revenue)
+            .OrderByDescending(x => x.QuantitySold)
+            .ThenByDescending(x => x.Revenue)
             .Take(limit)
             .ToList();
 
@@ -226,11 +230,11 @@ public class ReportingService : IReportingService, IReportService
             .Include(s => s.Items)
             .ToListAsync(cancellationToken);
 
-        // Map product sold quantity in the filtered period
+        // Map product sold quantity in the filtered period (in Base Pieces)
         var productSoldInPeriod = completedSales
             .SelectMany(s => s.Items)
             .GroupBy(i => i.ProductId)
-            .ToDictionary(g => g.Key, g => g.Sum(i => i.Quantity));
+            .ToDictionary(g => g.Key, g => g.Sum(i => i.BaseQuantityDeducted > 0 ? i.BaseQuantityDeducted : i.Quantity));
 
         // Get all completed sales across all time to find LastSaleDate
         var allCompletedSales = await _db.Sales
@@ -506,8 +510,8 @@ public class ReportingService : IReportingService, IReportService
                     header.Cell().Background("#0D7A5F").Padding(4).Text("SKU").FontSize(7).Bold().FontColor("#FFFFFF");
                     header.Cell().Background("#0D7A5F").Padding(4).Text("Product Name").FontSize(7).Bold().FontColor("#FFFFFF");
                     header.Cell().Background("#0D7A5F").Padding(4).Text("Category").FontSize(7).Bold().FontColor("#FFFFFF");
-                    header.Cell().Background("#0D7A5F").Padding(4).AlignRight().Text("Qty").FontSize(7).Bold().FontColor("#FFFFFF");
-                    header.Cell().Background("#0D7A5F").Padding(4).AlignRight().Text("Revenue").FontSize(7).Bold().FontColor("#FFFFFF");
+                    header.Cell().Background("#0D7A5F").Padding(4).AlignRight().Text("Qty (PCS)").FontSize(7).Bold().FontColor("#FFFFFF");
+                    header.Cell().Background("#0D7A5F").Padding(4).AlignRight().Text("Revenue (₱)").FontSize(7).Bold().FontColor("#FFFFFF");
                     header.Cell().Background("#0D7A5F").Padding(4).AlignRight().Text("COGS").FontSize(7).Bold().FontColor("#FFFFFF");
                     header.Cell().Background("#0D7A5F").Padding(4).AlignRight().Text("Profit").FontSize(7).Bold().FontColor("#FFFFFF");
                     header.Cell().Background("#0D7A5F").Padding(4).AlignRight().Text("Margin").FontSize(7).Bold().FontColor("#FFFFFF");

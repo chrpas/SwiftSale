@@ -20,3 +20,7 @@ dist-ssr/
 # OS
 .DS_Store
 Thumbs.db
+
+# Build cache & Scratch
+scratch/
+*.tsbuildinfo

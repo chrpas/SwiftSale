@@ -208,7 +208,9 @@ public class InventoryService : IInventoryService
             avgCost,
             product.SellingPrice,
             product.ReorderLevel,
-            onHand * avgCost
+            onHand * avgCost,
+            product.PiecesPerBox,
+            product.UnitIdentifier ?? "PCS"
         );
     }
 
@@ -248,7 +250,9 @@ public class InventoryService : IInventoryService
                 avgCost,
                 p.SellingPrice,
                 p.ReorderLevel,
-                onHand * avgCost
+                onHand * avgCost,
+                p.PiecesPerBox,
+                p.UnitIdentifier ?? "PCS"
             );
         }).ToList();
     }

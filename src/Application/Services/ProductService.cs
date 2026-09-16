@@ -91,13 +91,19 @@ public class ProductService : IProductService
 
         await using var transaction = await _db.BeginTransactionAsync(cancellationToken);
 
+        var unit = !string.IsNullOrWhiteSpace(dto.UnitIdentifier)
+            ? dto.UnitIdentifier.Trim().ToUpperInvariant()
+            : (!string.IsNullOrWhiteSpace(dto.UnitId) ? dto.UnitId.Trim().ToUpperInvariant() : "PCS");
+
         var product = new Product
         {
             Id = Guid.NewGuid(),
             SKU = skuNormalized,
             Name = dto.Name.Trim(),
             CategoryId = dto.CategoryId,
-            UnitId = dto.UnitId?.Trim(),
+            UnitIdentifier = unit,
+            PiecesPerBox = dto.PiecesPerBox > 0 ? dto.PiecesPerBox : 1,
+            Description = dto.Description?.Trim(),
             CostPrice = dto.CostPrice,
             SellingPrice = dto.SellingPrice,
             ReorderLevel = dto.ReorderLevel,
@@ -156,9 +162,15 @@ public class ProductService : IProductService
             throw new NotFoundException(nameof(Category), dto.CategoryId);
         }
 
+        var unit = !string.IsNullOrWhiteSpace(dto.UnitIdentifier)
+            ? dto.UnitIdentifier.Trim().ToUpperInvariant()
+            : (!string.IsNullOrWhiteSpace(dto.UnitId) ? dto.UnitId.Trim().ToUpperInvariant() : product.UnitIdentifier);
+
         product.Name = dto.Name.Trim();
         product.CategoryId = dto.CategoryId;
-        product.UnitId = dto.UnitId?.Trim();
+        product.UnitIdentifier = unit;
+        product.PiecesPerBox = dto.PiecesPerBox > 0 ? dto.PiecesPerBox : 1;
+        product.Description = dto.Description?.Trim();
         product.CostPrice = dto.CostPrice;
         product.SellingPrice = dto.SellingPrice;
         product.ReorderLevel = dto.ReorderLevel;
@@ -199,7 +211,7 @@ public class ProductService : IProductService
         p.Name,
         p.CategoryId,
         p.Category?.Name,
-        p.UnitId,
+        p.UnitIdentifier,
         p.CostPrice,
         p.SellingPrice,
         p.ReorderLevel,
@@ -208,6 +220,9 @@ public class ProductService : IProductService
         p.InventoryBalance?.ReservedQuantity ?? 0m,
         (p.InventoryBalance?.QuantityOnHand ?? 0m) - (p.InventoryBalance?.ReservedQuantity ?? 0m),
         p.InventoryBalance?.AverageCost ?? p.CostPrice,
-        p.CreatedAt
+        p.CreatedAt,
+        p.UnitIdentifier,
+        p.PiecesPerBox,
+        p.Description
     );
 }

@@ -10,6 +10,10 @@ public class SaleItem
     public Guid ProductId { get; set; }
     public Product? Product { get; set; }
 
+    public string UnitSold { get; set; } = "PCS"; // "PCS" or "BOX"
+    public decimal QuantitySold { get; set; }      // E.g., 2 (boxes) or 5 (pieces)
+    public decimal BaseQuantityDeducted { get; set; } // E.g., 2 boxes * 10 = 20 pieces
+
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal Discount { get; set; }

@@ -6,7 +6,8 @@ public record CreateSaleItemDto(
     Guid ProductId,
     decimal Quantity,
     decimal? UnitPrice = null,
-    decimal Discount = 0m
+    decimal Discount = 0m,
+    string? UnitSold = "PCS"
 );
 
 public record CreatePaymentDto(

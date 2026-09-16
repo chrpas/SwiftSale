@@ -35,6 +35,7 @@ interface CartLineItem {
   quantity: number;
   unitPrice: number;
   discount: number;
+  unitSold: 'PCS' | 'BOX';
 }
 
 export const PosPage: React.FC = () => {
@@ -118,13 +119,16 @@ export const PosPage: React.FC = () => {
     }
 
     const q = searchQuery.toLowerCase().trim();
-    const filtered = products.filter(
-      (p) => p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)
+    const matches = products.filter(
+      (p) =>
+        p.sku.toLowerCase().includes(q) ||
+        p.name.toLowerCase().includes(q) ||
+        (p.categoryName && p.categoryName.toLowerCase().includes(q))
     );
 
-    setSearchResults(filtered.slice(0, 8)); // Top 8 matches
+    setSearchResults(matches.slice(0, 10)); // Top 10 matches
     setSelectedResultIndex(0);
-    setIsSearchOpen(true);
+    setIsSearchOpen(matches.length > 0);
   }, [searchQuery, products]);
 
   // Add item to cart
@@ -141,9 +145,15 @@ export const PosPage: React.FC = () => {
       if (existingIdx >= 0) {
         const updated = [...prevCart];
         const item = updated[existingIdx];
-        const newQty = item.quantity + 1;
-        if (newQty > product.quantityOnHand) {
-          setErrorBanner(`Notice: Quantity (${newQty}) exceeds on-hand stock (${product.quantityOnHand}) for ${product.sku}.`);
+        const piecesPerBox = item.product.piecesPerBox && item.product.piecesPerBox > 0 ? item.product.piecesPerBox : 1;
+        const maxQty = item.unitSold === 'BOX' 
+          ? Math.floor(item.product.quantityOnHand / piecesPerBox) 
+          : item.product.quantityOnHand;
+
+        let newQty = item.quantity + 1;
+        if (maxQty > 0 && newQty > maxQty) {
+          newQty = maxQty;
+          setErrorBanner(`Notice: Max available reached (${maxQty} ${item.unitSold}) for ${product.sku}.`);
         }
         updated[existingIdx] = {
           ...item,
@@ -158,6 +168,7 @@ export const PosPage: React.FC = () => {
             quantity: 1,
             unitPrice: product.sellingPrice,
             discount: 0,
+            unitSold: 'PCS',
           },
         ];
       }
@@ -201,15 +212,48 @@ export const PosPage: React.FC = () => {
     }
   };
 
+  const updateUnitSold = (productId: string, unit: 'PCS' | 'BOX') => {
+    setCart((prev) =>
+      prev.map((item) => {
+        if (item.product.id !== productId) return item;
+        const piecesPerBox = item.product.piecesPerBox && item.product.piecesPerBox > 0 ? item.product.piecesPerBox : 1;
+        const newUnitPrice = unit === 'BOX' ? item.product.sellingPrice * piecesPerBox : item.product.sellingPrice;
+        
+        const maxQty = unit === 'BOX' 
+          ? Math.floor(item.product.quantityOnHand / piecesPerBox) 
+          : item.product.quantityOnHand;
+
+        let adjustedQty = item.quantity;
+        if (maxQty > 0 && adjustedQty > maxQty) {
+          adjustedQty = maxQty;
+        }
+
+        return {
+          ...item,
+          unitSold: unit,
+          unitPrice: newUnitPrice,
+          quantity: Math.max(1, adjustedQty),
+        };
+      })
+    );
+  };
+
   const updateQuantity = (productId: string, newQuantity: number) => {
     if (newQuantity <= 0) {
       removeFromCart(productId);
       return;
     }
     setCart((prev) =>
-      prev.map((item) =>
-        item.product.id === productId ? { ...item, quantity: newQuantity } : item
-      )
+      prev.map((item) => {
+        if (item.product.id !== productId) return item;
+        const piecesPerBox = item.product.piecesPerBox && item.product.piecesPerBox > 0 ? item.product.piecesPerBox : 1;
+        const maxQty = item.unitSold === 'BOX'
+          ? Math.floor(item.product.quantityOnHand / piecesPerBox)
+          : item.product.quantityOnHand;
+
+        const clampedQty = maxQty > 0 ? Math.min(newQuantity, maxQty) : newQuantity;
+        return { ...item, quantity: clampedQty };
+      })
     );
   };
 
@@ -271,6 +315,7 @@ export const PosPage: React.FC = () => {
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           discount: item.discount,
+          unitSold: item.unitSold,
         })),
         payments: [
           {
@@ -380,7 +425,7 @@ export const PosPage: React.FC = () => {
                     <div>
                       <div className="font-semibold text-sm" style={{color: index === selectedResultIndex ? '#0D7A5F' : '#1D3530'}}>{prod.name}</div>
                       <div className="text-xs" style={{color:'#6B8F7A'}}>
-                        SKU: <span className="font-mono" style={{color:'#0D7A5F'}}>{prod.sku}</span> |{' '}
+                        SKU: <span className="font-mono" style={{color:'#0D7A5F'}}>{prod.sku}</span>{prod.piecesPerBox && prod.piecesPerBox > 1 ? ` · ${prod.piecesPerBox} pcs/box` : ''} |{' '}
                         Category: {prod.categoryName || 'General'}
                       </div>
                     </div>
@@ -389,7 +434,7 @@ export const PosPage: React.FC = () => {
                         ₱{prod.sellingPrice.toFixed(2)}
                       </div>
                       <div className="text-xs" style={{color: prod.quantityOnHand <= prod.reorderLevel ? '#D97706' : '#8AAF9B', fontWeight: prod.quantityOnHand <= prod.reorderLevel ? 600 : 400}}>
-                        Stock: {prod.quantityOnHand} {prod.unitId}
+                        Stock: {prod.quantityOnHand} {prod.unitId} {prod.piecesPerBox && prod.piecesPerBox > 1 ? `(${Math.floor(prod.quantityOnHand / prod.piecesPerBox)} boxes)` : ''}
                       </div>
                     </div>
                   </div>
@@ -424,8 +469,9 @@ export const PosPage: React.FC = () => {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-800 bg-slate-950/40 text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
+                    <tr className="border-b border-[#E1ECE5] bg-[#F8FAFC] text-[11px] uppercase tracking-wider text-[#3D5A50] font-semibold">
                       <th className="py-3 px-4">Item Details</th>
+                      <th className="py-3 px-4 text-center">Unit</th>
                       <th className="py-3 px-4">Unit Price</th>
                       <th className="py-3 px-4 text-center">Quantity</th>
                       <th className="py-3 px-4">Discount</th>
@@ -433,38 +479,58 @@ export const PosPage: React.FC = () => {
                       <th className="py-3 px-4 text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60 text-sm">
+                  <tbody className="divide-y divide-[#E1ECE5] text-sm">
                     {cart.map((item) => {
+                      const stock = item.product.quantityOnHand;
+                      const piecesPerBox = item.product.piecesPerBox && item.product.piecesPerBox > 0 ? item.product.piecesPerBox : 1;
+                      const availableBoxes = Math.floor(stock / piecesPerBox);
+                      const maxQty = item.unitSold === 'BOX' ? availableBoxes : stock;
+                      const isExceedingStock = maxQty > 0 ? item.quantity > maxQty : stock <= 0;
                       const lineTotal = item.quantity * item.unitPrice - item.discount;
-                      const isLowStock = item.product.quantityOnHand < item.quantity;
+
                       return (
-                        <tr key={item.product.id} className="hover:bg-slate-800/30 transition-colors">
+                        <tr key={item.product.id} className="hover:bg-[#F8FAFC] transition-colors">
                           <td className="py-3 px-4">
-                            <div className="font-semibold text-white">{item.product.name}</div>
-                            <div className="text-xs text-slate-400 font-mono">
-                              {item.product.sku}
+                            <div className="font-semibold text-[#1D3530]">{item.product.name}</div>
+                            <div className="text-xs text-[#6B8F7A] font-mono">
+                              SKU: {item.product.sku} {piecesPerBox > 1 ? `· ${piecesPerBox} pcs/box` : ''}
                             </div>
-                            {isLowStock && (
-                              <span className="text-[10px] text-rose-400 font-medium">
-                                Exceeds stock ({item.product.quantityOnHand})
+                            <div className="text-[11px] text-[#0D7A5F] mt-0.5 font-medium">
+                              Available: <strong className="text-[#1D3530]">{availableBoxes} boxes</strong> ({stock} pcs)
+                            </div>
+                            {isExceedingStock && (
+                              <span className="text-[10px] text-rose-500 font-semibold block mt-0.5">
+                                Exceeds stock ({maxQty} {item.unitSold} max)
                               </span>
                             )}
                           </td>
-                          <td className="py-3 px-4 text-slate-300 font-medium">
-                            ₱{item.unitPrice.toFixed(2)}
+                          <td className="py-3 px-4 text-center">
+                            <select
+                              value={item.unitSold}
+                              onChange={(e) => updateUnitSold(item.product.id, e.target.value as 'PCS' | 'BOX')}
+                              className="px-2.5 py-1 rounded-lg text-xs font-bold border border-[#C5DDD0] bg-white text-[#1D3530] focus:ring-1 focus:ring-[#0D7A5F] focus:border-[#0D7A5F] cursor-pointer shadow-sm hover:border-[#0D7A5F] transition-colors"
+                            >
+                              <option value="PCS">PCS</option>
+                              <option value="BOX">BOX {piecesPerBox > 1 ? `(${piecesPerBox} pcs)` : ''}</option>
+                            </select>
+                          </td>
+                          <td className="py-3 px-4 text-[#1D3530] font-medium">
+                            <div className="font-semibold">₱{item.unitPrice.toFixed(2)}</div>
+                            <div className="text-[10px] text-[#6B8F7A]">/{item.unitSold}</div>
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                                className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors"
+                                className="w-7 h-7 rounded-lg bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] flex items-center justify-center transition-colors"
                               >
                                 <Minus className="w-3.5 h-3.5" />
                               </button>
                               <input
                                 type="number"
                                 min="1"
+                                max={maxQty > 0 ? maxQty : undefined}
                                 value={item.quantity}
                                 onChange={(e) =>
                                   updateQuantity(
@@ -472,12 +538,13 @@ export const PosPage: React.FC = () => {
                                     parseFloat(e.target.value) || 1
                                   )
                                 }
-                                className="w-14 text-center py-1 rounded-lg border border-slate-700 bg-slate-900 text-white font-semibold text-sm focus:outline-none focus:border-indigo-500"
+                                className="w-14 text-center py-1 rounded-lg border border-[#CBD5E1] bg-white text-[#1D3530] font-semibold text-sm focus:outline-none focus:border-[#0D7A5F]"
                               />
                               <button
                                 type="button"
                                 onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                                className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors"
+                                disabled={maxQty > 0 && item.quantity >= maxQty}
+                                className="w-7 h-7 rounded-lg bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                               >
                                 <Plus className="w-3.5 h-3.5" />
                               </button>
@@ -485,7 +552,7 @@ export const PosPage: React.FC = () => {
                           </td>
                           <td className="py-3 px-4">
                             <div className="relative w-20">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[#64748B] text-xs">
                                 ₱
                               </span>
                               <input
@@ -497,18 +564,18 @@ export const PosPage: React.FC = () => {
                                   updateDiscount(item.product.id, parseFloat(e.target.value) || 0)
                                 }
                                 placeholder="0.00"
-                                className="w-full pl-5 pr-2 py-1 rounded-lg border border-slate-700 bg-slate-900 text-slate-200 text-xs focus:outline-none focus:border-indigo-500"
+                                className="w-full pl-5 pr-2 py-1 rounded-lg border border-[#CBD5E1] bg-white text-[#1D3530] text-xs focus:outline-none focus:border-[#0D7A5F]"
                               />
                             </div>
                           </td>
-                          <td className="py-3 px-4 text-right font-bold text-white">
+                          <td className="py-3 px-4 text-right font-bold text-[#1D3530]">
                             ₱{lineTotal.toFixed(2)}
                           </td>
                           <td className="py-3 px-4 text-center">
                             <button
                               type="button"
                               onClick={() => removeFromCart(item.product.id)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                               title="Remove item"
                             >
                               <Trash2 className="w-4 h-4" />

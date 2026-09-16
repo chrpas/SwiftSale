@@ -12,7 +12,10 @@ public record SaleItemDto(
     decimal Discount,
     decimal Total,
     decimal EstimatedCost,
-    decimal GrossProfit
+    decimal GrossProfit,
+    string UnitSold = "PCS",
+    decimal QuantitySold = 0m,
+    decimal BaseQuantityDeducted = 0m
 );
 
 public record PaymentDto(

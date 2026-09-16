@@ -7,5 +7,8 @@ public record UpdateProductDto(
     decimal CostPrice,
     decimal SellingPrice,
     int ReorderLevel,
-    bool IsActive
+    bool IsActive,
+    string? UnitIdentifier = null,
+    int PiecesPerBox = 1,
+    string? Description = null
 );

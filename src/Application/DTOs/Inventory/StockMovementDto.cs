@@ -29,7 +29,9 @@ public record InventoryBalanceDto(
     decimal AverageCost,
     decimal SellingPrice,
     int ReorderLevel,
-    decimal TotalValuation
+    decimal TotalValuation,
+    int PiecesPerBox = 1,
+    string UnitIdentifier = "PCS"
 );
 
 public record LowStockProductDto(

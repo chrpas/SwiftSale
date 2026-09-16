@@ -29,6 +29,10 @@ public class CreateSaleValidator : AbstractValidator<CreateSaleDto>
                 items.RuleFor(i => i.UnitPrice!.Value)
                     .GreaterThanOrEqualTo(0).WithMessage("Unit price cannot be negative.");
             });
+
+            items.RuleFor(i => i.UnitSold)
+                .Must(u => string.IsNullOrWhiteSpace(u) || u.Equals("PCS", StringComparison.OrdinalIgnoreCase) || u.Equals("BOX", StringComparison.OrdinalIgnoreCase))
+                .WithMessage("Unit sold must be either 'PCS' or 'BOX'.");
         });
 
         When(x => x.Payments != null && x.Payments.Count > 0, () =>

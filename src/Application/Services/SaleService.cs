@@ -45,7 +45,8 @@ public class SaleService : ISaleService
             .Where(p => productIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, cancellationToken);
 
-        // Pre-validate all products exist and have sufficient stock
+        // Pre-validate all products exist and aggregate deduction in base pieces (PCS)
+        var deductionsPerProduct = new Dictionary<Guid, decimal>();
         foreach (var item in dto.Items)
         {
             if (!products.TryGetValue(item.ProductId, out var product) || !product.IsActive)
@@ -53,15 +54,23 @@ public class SaleService : ISaleService
                 throw new NotFoundException(nameof(Product), item.ProductId);
             }
 
-            var balance = product.InventoryBalance;
-            var available = balance?.QuantityOnHand ?? 0m;
+            var unitSold = (item.UnitSold ?? "PCS").Trim().ToUpperInvariant();
+            var piecesPerBox = product.PiecesPerBox > 0 ? product.PiecesPerBox : 1;
+            var deduction = unitSold == "BOX" ? item.Quantity * piecesPerBox : item.Quantity;
 
-            if (available - item.Quantity < 0)
+            deductionsPerProduct[product.Id] = deductionsPerProduct.GetValueOrDefault(product.Id) + deduction;
+        }
+
+        foreach (var (productId, totalDeduction) in deductionsPerProduct)
+        {
+            var product = products[productId];
+            var available = product.InventoryBalance?.QuantityOnHand ?? 0m;
+            if (available - totalDeduction < 0)
             {
                 throw new InsufficientStockException(
                     product.Id,
                     product.SKU,
-                    item.Quantity,
+                    totalDeduction,
                     available
                 );
             }
@@ -93,27 +102,37 @@ public class SaleService : ISaleService
             var product = products[item.ProductId];
             var balance = product.InventoryBalance!;
 
-            var unitPrice = item.UnitPrice ?? product.SellingPrice;
+            var unitSold = (item.UnitSold ?? "PCS").Trim().ToUpperInvariant();
+            if (unitSold != "BOX") unitSold = "PCS";
+
+            var piecesPerBox = product.PiecesPerBox > 0 ? product.PiecesPerBox : 1;
+            var deduction = unitSold == "BOX" ? item.Quantity * piecesPerBox : item.Quantity;
+
+            var defaultUnitPrice = unitSold == "BOX"
+                ? product.SellingPrice * piecesPerBox
+                : product.SellingPrice;
+
+            var unitPrice = item.UnitPrice ?? defaultUnitPrice;
             var lineSubtotal = item.Quantity * unitPrice;
             var lineTotal = lineSubtotal - item.Discount;
 
             subtotal += lineSubtotal;
             totalDiscount += item.Discount;
 
-            // 1. Dual-Ledger Inventory Rule: Deduct Balance
-            balance.QuantityOnHand -= item.Quantity;
+            // 1. Dual-Ledger Inventory Rule: Deduct Balance in Base Pieces
+            balance.QuantityOnHand -= deduction;
 
-            // 2. Dual-Ledger Inventory Rule: Accompanying StockMovement
+            // 2. Dual-Ledger Inventory Rule: Accompanying StockMovement in Base Pieces
             var movement = new StockMovement
             {
                 Id = Guid.NewGuid(),
                 ProductId = product.Id,
                 Type = StockMovementType.SaleOut,
-                Quantity = item.Quantity,
+                Quantity = deduction,
                 UnitCost = balance.AverageCost,
                 ReferenceType = "Sale",
                 ReferenceId = saleId,
-                Reason = $"Sale invoice {invoiceNo}",
+                Reason = $"Sold {item.Quantity} {unitSold} ({deduction} PCS)",
                 CreatedAt = DateTime.UtcNow
             };
             await _db.StockMovements.AddAsync(movement, cancellationToken);
@@ -123,7 +142,10 @@ public class SaleService : ISaleService
                 Id = Guid.NewGuid(),
                 SaleId = saleId,
                 ProductId = product.Id,
-                Quantity = item.Quantity,
+                UnitSold = unitSold,
+                QuantitySold = item.Quantity,
+                BaseQuantityDeducted = deduction,
+                Quantity = deduction,
                 UnitPrice = unitPrice,
                 Discount = item.Discount,
                 Total = lineTotal
@@ -186,15 +208,16 @@ public class SaleService : ISaleService
 
         sale.Status = SaleStatus.Voided;
 
-        // Dual-Ledger Invariant: Restore stock & record SaleVoidReturn movements
+        // Dual-Ledger Invariant: Restore stock & record SaleVoidReturn movements in Base Pieces
         foreach (var item in sale.Items)
         {
             if (item.Product != null)
             {
+                var returnQty = item.BaseQuantityDeducted > 0 ? item.BaseQuantityDeducted : item.Quantity;
                 var balance = item.Product.InventoryBalance;
                 if (balance != null)
                 {
-                    balance.QuantityOnHand += item.Quantity;
+                    balance.QuantityOnHand += returnQty;
                 }
 
                 var unitCost = balance?.AverageCost ?? item.Product.CostPrice;
@@ -204,11 +227,11 @@ public class SaleService : ISaleService
                     Id = Guid.NewGuid(),
                     ProductId = item.ProductId,
                     Type = StockMovementType.SaleVoidReturn,
-                    Quantity = item.Quantity,
+                    Quantity = returnQty,
                     UnitCost = unitCost,
                     ReferenceType = "SaleVoid",
                     ReferenceId = sale.Id,
-                    Reason = $"Voided invoice {sale.InvoiceNo}: {dto.Reason.Trim()}",
+                    Reason = $"Voided invoice {sale.InvoiceNo}: {dto.Reason.Trim()} (restored {returnQty} PCS)",
                     CreatedAt = DateTime.UtcNow
                 };
                 await _db.StockMovements.AddAsync(movement, cancellationToken);
@@ -353,7 +376,8 @@ public class SaleService : ISaleService
         var items = sale.Items.Select(i =>
         {
             var avgCost = i.Product?.InventoryBalance?.AverageCost ?? i.Product?.CostPrice ?? 0m;
-            var lineCost = i.Quantity * avgCost;
+            var baseQty = i.BaseQuantityDeducted > 0 ? i.BaseQuantityDeducted : i.Quantity;
+            var lineCost = baseQty * avgCost;
             var lineProfit = i.Total - lineCost;
 
             totalEstimatedCost += lineCost;
@@ -368,7 +392,10 @@ public class SaleService : ISaleService
                 i.Discount,
                 i.Total,
                 lineCost,
-                lineProfit
+                lineProfit,
+                i.UnitSold ?? "PCS",
+                i.QuantitySold > 0 ? i.QuantitySold : i.Quantity,
+                baseQty
             );
         }).ToList();
 

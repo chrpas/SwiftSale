@@ -21,8 +21,19 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             .IsRequired()
             .HasMaxLength(256);
 
-        builder.Property(p => p.UnitId)
-            .HasMaxLength(32);
+        builder.Property(p => p.UnitIdentifier)
+            .IsRequired()
+            .HasMaxLength(32)
+            .HasDefaultValue("PCS");
+
+        builder.Property(p => p.PiecesPerBox)
+            .IsRequired()
+            .HasDefaultValue(1);
+
+        builder.Property(p => p.Description)
+            .HasMaxLength(2000);
+
+        builder.Ignore(p => p.UnitId);
 
         builder.HasOne(p => p.Category)
             .WithMany(c => c.Products)
