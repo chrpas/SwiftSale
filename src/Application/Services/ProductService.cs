@@ -181,6 +181,18 @@ public class ProductService : IProductService
         await _db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task ActivateAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var product = await _db.Products
+            .Include(p => p.InventoryBalance)
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken)
+            ?? throw new NotFoundException(nameof(Product), id);
+
+        // Reactivate discontinued product
+        product.IsActive = true;
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
     private static ProductDto MapToDto(Product p) => new(
         p.Id,
         p.SKU,

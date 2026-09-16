@@ -315,7 +315,7 @@ const UnitsTab: React.FC = () => {
           {units.map((u) => (
             <div key={u.id} className="unit-card">
               <div>
-                <p className="font-semibold text-white">{u.name}</p>
+                <p className="font-semibold text-[#1D3530]">{u.name}</p>
                 <p className="text-slate-400 text-sm">{u.abbreviation}</p>
               </div>
               <div className="flex gap-2">
@@ -369,33 +369,258 @@ const UnitsTab: React.FC = () => {
 const CategoriesTab: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<Category | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
+  const [form, setForm] = useState({ name: '', description: '' });
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    categoriesService.getAll()
-      .then(setCategories)
-      .catch((e) => setError(getErrorMessage(e)))
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await categoriesService.getAll();
+      setCategories(data);
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const openAdd = () => {
+    setEditing(null);
+    setForm({ name: '', description: '' });
+    setError(null);
+    setShowModal(true);
+  };
+
+  const openEdit = (c: Category) => {
+    setEditing(c);
+    setForm({ name: c.name, description: c.description || '' });
+    setError(null);
+    setShowModal(true);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      if (editing) {
+        await categoriesService.update(editing.id, {
+          name: form.name.trim(),
+          description: form.description.trim() || undefined,
+        });
+      } else {
+        await categoriesService.create({
+          name: form.name.trim(),
+          description: form.description.trim() || undefined,
+        });
+      }
+      setShowModal(false);
+      await load();
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await categoriesService.delete(deleteTarget.id);
+      setDeleteTarget(null);
+      await load();
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="settings-tab">
       <div className="settings-tab-header">
-        <h3 className="settings-tab-title">Product Categories</h3>
+        <div>
+          <h3 className="settings-tab-title">Product Categories</h3>
+          <p className="text-xs text-[#6B8F7A] mt-0.5">Manage departments and classifications for your inventory</p>
+        </div>
+        <button id="btn-add-category" className="btn-primary btn-sm flex items-center gap-1.5" onClick={openAdd}>
+          <Plus className="w-4 h-4" />
+          <span>Add Category</span>
+        </button>
       </div>
-      {error && <div className="alert-error">{error}</div>}
+
+      {error && (
+        <div className="alert-error flex items-center justify-between mb-4">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError(null)} className="text-rose-500 hover:text-rose-700 ml-2">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {loading ? (
-        <div className="loading-center"><Loader2 className="w-6 h-6 animate-spin text-indigo-400" /></div>
+        <div className="loading-center">
+          <Loader2 className="w-6 h-6 animate-spin text-[#0D7A5F]" />
+        </div>
+      ) : categories.length === 0 ? (
+        <div className="p-8 text-center bg-[#F2F7F4] rounded-2xl border border-dashed border-[#E1ECE5]">
+          <Package className="w-10 h-10 text-[#6B8F7A] mx-auto mb-2 opacity-60" />
+          <p className="font-semibold text-sm text-[#1D3530]">No categories found</p>
+          <p className="text-xs text-[#6B8F7A] mt-1">Get started by creating your first product category.</p>
+          <button onClick={openAdd} className="btn-primary btn-sm mt-3 mx-auto flex items-center gap-1.5">
+            <Plus className="w-4 h-4" />
+            <span>Add Category</span>
+          </button>
+        </div>
       ) : (
         <div className="settings-grid">
           {categories.map((c) => (
-            <div key={c.id} className="unit-card">
-              <div>
-                <p className="font-semibold text-white">{c.name}</p>
-                <p className="text-slate-400 text-sm">{c.description}</p>
+            <div key={c.id} className="unit-card flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                <div className="w-8 h-8 rounded-lg bg-[#ECFDF5] border border-[#0D7A5F]/20 flex items-center justify-center text-[#0D7A5F] flex-shrink-0 mt-0.5">
+                  <Package className="w-4 h-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-[#1D3530] text-sm truncate">{c.name}</p>
+                  <p className="text-slate-500 text-xs mt-0.5 line-clamp-2">
+                    {c.description || <span className="italic text-slate-400">No description</span>}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  id={`btn-edit-category-${c.id}`}
+                  className="icon-btn hover:text-[#0D7A5F]"
+                  title="Edit Category"
+                  onClick={() => openEdit(c)}
+                >
+                  <Pencil className="w-4 h-4 text-[#0D7A5F]" />
+                </button>
+                <button
+                  id={`btn-delete-category-${c.id}`}
+                  className="icon-btn hover:text-red-600"
+                  title="Delete Category"
+                  onClick={() => {
+                    setError(null);
+                    setDeleteTarget(c);
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 text-red-400" />
+                </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Add / Edit Category Modal */}
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">{editing ? 'Edit Category' : 'Add Product Category'}</h3>
+              <button className="icon-btn" onClick={() => setShowModal(false)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleSave} className="modal-body space-y-4">
+              {error && <div className="alert-error">{error}</div>}
+              <div className="form-group">
+                <label className="form-label">
+                  Category Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="input-category-name"
+                  className="form-input"
+                  required
+                  autoFocus
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. Beverages, Electronics, Groceries"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">
+                  Description <span className="text-slate-400 font-normal text-xs">(Optional)</span>
+                </label>
+                <textarea
+                  id="input-category-description"
+                  className="form-input resize-none"
+                  rows={3}
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="Brief description of products in this category..."
+                />
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn-ghost" onClick={() => setShowModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" id="btn-save-category" className="btn-primary" disabled={saving}>
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span>{editing ? 'Save Changes' : 'Add Category'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Category Confirmation Modal */}
+      {deleteTarget && (
+        <div className="modal-overlay" onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="modal-card max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header bg-rose-50/70 border-b border-rose-100">
+              <h3 className="modal-title text-rose-800 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-rose-600" />
+                <span>Delete Category</span>
+              </h3>
+              <button className="icon-btn" disabled={deleting} onClick={() => setDeleteTarget(null)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="modal-body space-y-3">
+              {error && (
+                <div className="alert-error text-xs">
+                  {error}
+                </div>
+              )}
+              <p className="text-sm text-[#1D3530]">
+                Are you sure you want to delete category <strong className="text-rose-700 font-bold">{deleteTarget.name}</strong>?
+              </p>
+              <p className="text-xs text-[#6B8F7A]">
+                This action cannot be undone. Categories currently assigned to active products cannot be removed.
+              </p>
+            </div>
+            <div className="modal-footer px-6 py-4 bg-[#F2F7F4] border-t border-[#E1ECE5]">
+              <button type="button" className="btn-ghost text-xs" disabled={deleting} onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-delete-category"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                disabled={deleting}
+                onClick={confirmDelete}
+              >
+                {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>Delete Category</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

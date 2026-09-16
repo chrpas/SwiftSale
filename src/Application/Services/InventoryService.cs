@@ -199,7 +199,9 @@ public class InventoryService : IInventoryService
             product.Id,
             product.SKU,
             product.Name,
+            product.CategoryId,
             product.Category?.Name,
+            product.IsActive,
             onHand,
             reserved,
             onHand - reserved,
@@ -210,13 +212,20 @@ public class InventoryService : IInventoryService
         );
     }
 
-    public async Task<List<InventoryBalanceDto>> GetAllBalancesAsync(CancellationToken cancellationToken = default)
+    public async Task<List<InventoryBalanceDto>> GetAllBalancesAsync(bool? activeOnly = null, CancellationToken cancellationToken = default)
     {
-        var products = await _db.Products
+        var query = _db.Products
             .AsNoTracking()
             .Include(p => p.InventoryBalance)
             .Include(p => p.Category)
-            .Where(p => p.IsActive)
+            .AsQueryable();
+
+        if (activeOnly.HasValue)
+        {
+            query = query.Where(p => p.IsActive == activeOnly.Value);
+        }
+
+        var products = await query
             .OrderBy(p => p.Name)
             .ToListAsync(cancellationToken);
 
@@ -230,7 +239,9 @@ public class InventoryService : IInventoryService
                 p.Id,
                 p.SKU,
                 p.Name,
+                p.CategoryId,
                 p.Category?.Name,
+                p.IsActive,
                 onHand,
                 reserved,
                 onHand - reserved,

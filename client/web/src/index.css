@@ -671,3 +671,83 @@ select.form-input { cursor: pointer; }
 
 /* Force text colors for components that hardcode dark-theme classes */
 .font-medium { color: inherit; }
+
+/* ═══════════════════════════════════════════
+   DASHBOARD COMPONENT SCOPE
+═══════════════════════════════════════════ */
+.dashboard-canvas {
+  background-color: #F3F7F8;
+  color: #1E293B;
+}
+
+.dashboard-canvas .text-slate-800 {
+  color: #1E293B !important;
+}
+
+.dashboard-canvas .text-slate-700 {
+  color: #334155 !important;
+}
+
+.dashboard-canvas .text-slate-600 {
+  color: #475569 !important;
+}
+
+.dashboard-canvas .text-slate-500 {
+  color: #64748B !important;
+}
+
+.dashboard-canvas .text-slate-400 {
+  color: #94A3B8 !important;
+}
+
+.dashboard-canvas .text-slate-300 {
+  color: #CBD5E1 !important;
+}
+
+.dashboard-canvas .text-white,
+.dashboard-canvas button.text-white,
+.dashboard-canvas .btn-teal,
+.dashboard-canvas [data-force-white="true"] {
+  color: #FFFFFF !important;
+}
+
+.dashboard-canvas .border-slate-100\/90,
+.dashboard-canvas .border-slate-100 {
+  border-color: rgba(241, 245, 249, 0.9) !important;
+}
+
+.dashboard-canvas .border-slate-200,
+.dashboard-canvas .border-slate-200\/80,
+.dashboard-canvas .border-slate-200\/70 {
+  border-color: #E2E8F0 !important;
+}
+
+.dashboard-canvas .bg-slate-50,
+.dashboard-canvas .bg-slate-50\/50,
+.dashboard-canvas .bg-slate-50\/60 {
+  background-color: #F8FAFC !important;
+}
+
+.dashboard-canvas .bg-slate-100,
+.dashboard-canvas .bg-slate-100\/80,
+.dashboard-canvas .bg-slate-100\/90 {
+  background-color: #F1F5F9 !important;
+}
+
+.dashboard-canvas .hover\:bg-slate-50:hover,
+.dashboard-canvas .hover\:bg-slate-50\/50:hover,
+.dashboard-canvas .hover\:bg-slate-50\/60:hover {
+  background-color: #F8FAFC !important;
+}
+
+.dashboard-canvas .hover\:bg-slate-100:hover,
+.dashboard-canvas .hover\:bg-slate-100\/80:hover,
+.dashboard-canvas .hover\:bg-slate-100\/90:hover {
+  background-color: #F1F5F9 !important;
+}
+
+.dashboard-canvas .hover\:border-slate-300:hover {
+  border-color: #CBD5E1 !important;
+}
+
+

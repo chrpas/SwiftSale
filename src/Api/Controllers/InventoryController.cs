@@ -24,7 +24,10 @@ public class InventoryController : ControllerBase
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<InventoryBalanceDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult> GetBalances([FromQuery] bool lowStockOnly = false, CancellationToken cancellationToken = default)
+    public async Task<ActionResult> GetBalances(
+        [FromQuery] bool lowStockOnly = false, 
+        [FromQuery] bool? activeOnly = null, 
+        CancellationToken cancellationToken = default)
     {
         if (lowStockOnly)
         {
@@ -32,7 +35,7 @@ public class InventoryController : ControllerBase
             return Ok(lowStock);
         }
 
-        var balances = await _inventoryService.GetAllBalancesAsync(cancellationToken);
+        var balances = await _inventoryService.GetAllBalancesAsync(activeOnly, cancellationToken);
         return Ok(balances);
     }
 

@@ -9,5 +9,5 @@ public interface IInventoryService
     Task<List<StockMovementDto>> GetRecentMovementsAsync(int limit = 50, CancellationToken cancellationToken = default);
     Task<List<LowStockProductDto>> GetLowStockProductsAsync(CancellationToken cancellationToken = default);
     Task<InventoryBalanceDto> GetInventoryBalanceAsync(Guid productId, CancellationToken cancellationToken = default);
-    Task<List<InventoryBalanceDto>> GetAllBalancesAsync(CancellationToken cancellationToken = default);
+    Task<List<InventoryBalanceDto>> GetAllBalancesAsync(bool? activeOnly = null, CancellationToken cancellationToken = default);
 }

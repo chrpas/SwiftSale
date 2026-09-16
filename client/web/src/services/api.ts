@@ -14,7 +14,6 @@ import {
   InventoryReport,
   ProfitReport,
   Category,
-  ProblemDetails,
   RemoteAccessStatus,
   RemoteAccessSettings,
   UpdateRemoteAccessSettingsRequest,
@@ -53,9 +52,11 @@ apiClient.interceptors.response.use(
 // Helper to extract human-readable error from ProblemDetails or Axios error
 export const getErrorMessage = (error: unknown): string => {
   if (axios.isAxiosError(error)) {
-    const err = error as AxiosError<ProblemDetails>;
+    const err = error as AxiosError<any>;
     if (err.response?.data) {
       const data = err.response.data;
+      if (typeof data === 'string') return data;
+      if (data.message) return data.message;
       if (data.detail) return data.detail;
       if (data.title) return data.title;
       if (data.errors) {
@@ -94,11 +95,19 @@ export const productsService = {
     const response = await apiClient.put<Product>(`/products/${id}`, data);
     return response.data;
   },
+  discontinue: async (id: string): Promise<void> => {
+    await apiClient.delete(`/products/${id}`);
+  },
+  activate: async (id: string): Promise<void> => {
+    await apiClient.post(`/products/${id}/activate`);
+  },
 };
 
 export const inventoryService = {
-  getBalances: async (lowStockOnly?: boolean): Promise<InventoryBalance[]> => {
-    const params = lowStockOnly ? { lowStockOnly: true } : undefined;
+  getBalances: async (lowStockOnly?: boolean, activeOnly?: boolean): Promise<InventoryBalance[]> => {
+    const params: Record<string, boolean> = {};
+    if (lowStockOnly) params.lowStockOnly = true;
+    if (activeOnly !== undefined) params.activeOnly = activeOnly;
     const response = await apiClient.get<InventoryBalance[] | { value: InventoryBalance[] }>('/inventory', { params });
     if (Array.isArray(response.data)) return response.data;
     if (response.data && Array.isArray((response.data as { value?: InventoryBalance[] }).value)) {
@@ -159,8 +168,27 @@ export const customersService = {
 
 export const categoriesService = {
   getAll: async (): Promise<Category[]> => {
-    const response = await apiClient.get<Category[]>('/categories');
+    const response = await apiClient.get<Category[] | { value: Category[] }>('/categories');
+    if (Array.isArray(response.data)) return response.data;
+    if (response.data && Array.isArray((response.data as { value?: Category[] }).value)) {
+      return (response.data as { value: Category[] }).value;
+    }
+    return [];
+  },
+  getById: async (id: string): Promise<Category> => {
+    const response = await apiClient.get<Category>(`/categories/${id}`);
     return response.data;
+  },
+  create: async (data: { name: string; description?: string }): Promise<Category> => {
+    const response = await apiClient.post<Category>('/categories', data);
+    return response.data;
+  },
+  update: async (id: string, data: { name: string; description?: string }): Promise<Category> => {
+    const response = await apiClient.put<Category>(`/categories/${id}`, data);
+    return response.data;
+  },
+  delete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/categories/${id}`);
   },
 };
 

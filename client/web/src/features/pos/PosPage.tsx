@@ -14,6 +14,7 @@ import {
   Loader2,
   User,
   FileText,
+  X,
 } from 'lucide-react';
 import {
   productsService,

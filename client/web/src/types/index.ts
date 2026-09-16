@@ -62,6 +62,7 @@ export interface InventoryBalance {
   productId: string;
   productSKU: string;
   productName: string;
+  categoryId?: string;
   categoryName?: string;
   quantityOnHand: number;
   reservedQuantity: number;
@@ -70,6 +71,7 @@ export interface InventoryBalance {
   sellingPrice: number;
   reorderLevel: number;
   totalValuation: number;
+  isActive?: boolean;
   isLowStock?: boolean;
 }
 

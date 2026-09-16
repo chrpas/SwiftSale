@@ -12,7 +12,11 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertCircle,
+  Pencil,
+  Archive,
+  RotateCcw,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import {
   inventoryService,
   productsService,
@@ -28,10 +32,12 @@ import {
 } from '../../types';
 
 export const InventoryPage: React.FC = () => {
+  const { isAdmin } = useAuth();
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [lifecycleFilter, setLifecycleFilter] = useState<'active' | 'discontinued'>('active');
   const [statusFilter, setStatusFilter] = useState<'all' | 'lowStock' | 'inStock'>('all');
   const [bannerMessage, setBannerMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -43,6 +49,21 @@ export const InventoryPage: React.FC = () => {
   const [adjustReason, setAdjustReason] = useState<string>('');
   const [adjustSubmitting, setAdjustSubmitting] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
+
+  // Edit Product Modal State (Admin only)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<InventoryBalance | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCategoryId, setEditCategoryId] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Discontinue / Reactivate Modal State (Admin only)
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [statusTarget, setStatusTarget] = useState<InventoryBalance | null>(null);
+  const [statusAction, setStatusAction] = useState<'discontinue' | 'activate'>('discontinue');
+  const [statusSubmitting, setStatusSubmitting] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   // Add Product Modal State
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
@@ -85,7 +106,11 @@ export const InventoryPage: React.FC = () => {
   };
 
   // Filter balances based on search query and status filter
-  const filteredBalances = balances.filter((item) => {
+  const activeBalances = balances.filter((b) => b.isActive !== false);
+  const discontinuedBalances = balances.filter((b) => b.isActive === false);
+  const currentLifecycleBalances = lifecycleFilter === 'active' ? activeBalances : discontinuedBalances;
+
+  const filteredBalances = currentLifecycleBalances.filter((item) => {
     const matchesSearch =
       item.productSKU.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.productName.toLowerCase().includes(searchQuery.toLowerCase());
@@ -109,6 +134,95 @@ export const InventoryPage: React.FC = () => {
     setAdjustReason('');
     setAdjustError(null);
     setIsAdjustModalOpen(true);
+  };
+
+  // Open edit modal for Admin
+  const openEditModal = (balance: InventoryBalance) => {
+    if (!isAdmin) return;
+    setEditTarget(balance);
+    setEditName(balance.productName);
+    const matchedCategory = categories.find(
+      (c) => c.id === balance.categoryId || c.name === balance.categoryName
+    );
+    setEditCategoryId(balance.categoryId || matchedCategory?.id || categories[0]?.id || '');
+    setEditError(null);
+    setIsEditModalOpen(true);
+  };
+
+  // Submit edit product
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTarget) return;
+
+    if (!editName.trim()) {
+      setEditError('Product name is required.');
+      return;
+    }
+    if (!editCategoryId) {
+      setEditError('Please select a valid category.');
+      return;
+    }
+
+    try {
+      setEditSubmitting(true);
+      setEditError(null);
+
+      await productsService.update(editTarget.productId, {
+        name: editName.trim(),
+        categoryId: editCategoryId,
+      });
+
+      setBannerMessage({
+        text: `Product specifications updated for "${editName.trim()}".`,
+        type: 'success',
+      });
+      setIsEditModalOpen(false);
+      await loadData();
+    } catch (err) {
+      setEditError(getErrorMessage(err));
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  // Open status modal (Discontinue or Reactivate)
+  const openStatusModal = (balance: InventoryBalance, action: 'discontinue' | 'activate') => {
+    if (!isAdmin) return;
+    setStatusTarget(balance);
+    setStatusAction(action);
+    setStatusError(null);
+    setIsStatusModalOpen(true);
+  };
+
+  // Submit status change
+  const handleStatusSubmit = async () => {
+    if (!statusTarget) return;
+
+    try {
+      setStatusSubmitting(true);
+      setStatusError(null);
+
+      if (statusAction === 'discontinue') {
+        await productsService.discontinue(statusTarget.productId);
+        setBannerMessage({
+          text: `Product "${statusTarget.productName}" (${statusTarget.productSKU}) has been discontinued.`,
+          type: 'success',
+        });
+      } else {
+        await productsService.activate(statusTarget.productId);
+        setBannerMessage({
+          text: `Product "${statusTarget.productName}" (${statusTarget.productSKU}) has been reactivated.`,
+          type: 'success',
+        });
+      }
+
+      setIsStatusModalOpen(false);
+      await loadData();
+    } catch (err) {
+      setStatusError(getErrorMessage(err));
+    } finally {
+      setStatusSubmitting(false);
+    }
   };
 
   // Submit stock adjustment
@@ -220,14 +334,16 @@ export const InventoryPage: React.FC = () => {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
-          <button
-            type="button"
-            onClick={() => setIsAddProductModalOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-lg shadow-indigo-600/20 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Product</span>
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setIsAddProductModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-lg shadow-indigo-600/20 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Product</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -257,7 +373,7 @@ export const InventoryPage: React.FC = () => {
       )}
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center gap-3">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
         <div className="relative flex-1 w-full">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
@@ -269,31 +385,72 @@ export const InventoryPage: React.FC = () => {
           />
         </div>
 
-        {/* Status Filter Buttons */}
-        <div className="flex items-center gap-1.5 w-full sm:w-auto p-1 bg-slate-900/80 border border-slate-800 rounded-xl">
-          <button
-            type="button"
-            onClick={() => setStatusFilter('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              statusFilter === 'all'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            All Items ({balances.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('lowStock')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-              statusFilter === 'lowStock'
-                ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
-                : 'text-amber-400 hover:text-amber-300'
-            }`}
-          >
-            <AlertTriangle className="w-3 h-3" />
-            <span>Low Stock ({balances.filter((b) => b.isLowStock).length})</span>
-          </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Lifecycle Toggle: Active vs Discontinued */}
+          <div className="flex items-center gap-1 p-1 bg-slate-900/90 border border-slate-800 rounded-xl">
+            <button
+              type="button"
+              id="toggle-active-products"
+              onClick={() => setLifecycleFilter('active')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                lifecycleFilter === 'active'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <span>Active</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                lifecycleFilter === 'active' ? 'bg-indigo-500/50 text-white' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {activeBalances.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              id="toggle-discontinued-products"
+              onClick={() => setLifecycleFilter('discontinued')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                lifecycleFilter === 'discontinued'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Archive className="w-3.5 h-3.5" />
+              <span>Discontinued</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                lifecycleFilter === 'discontinued' ? 'bg-amber-500/50 text-white' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {discontinuedBalances.length}
+              </span>
+            </button>
+          </div>
+
+          {/* Status Filter Buttons */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-900/80 border border-slate-800 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                statusFilter === 'all'
+                  ? 'bg-slate-700 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              All ({currentLifecycleBalances.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('lowStock')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                statusFilter === 'lowStock'
+                  ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                  : 'text-amber-400 hover:text-amber-300'
+              }`}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              <span>Low Stock ({currentLifecycleBalances.filter((b) => b.isLowStock).length})</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -309,9 +466,13 @@ export const InventoryPage: React.FC = () => {
             <div className="w-12 h-12 rounded-full bg-slate-800 mx-auto flex items-center justify-center text-slate-500">
               <Boxes className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-semibold text-slate-300">No inventory matches</h3>
+            <h3 className="text-base font-semibold text-slate-300">
+              {lifecycleFilter === 'discontinued' ? 'No discontinued products' : 'No inventory matches'}
+            </h3>
             <p className="text-sm text-slate-500 max-w-sm mx-auto">
-              No products match your current search and filter criteria.
+              {lifecycleFilter === 'discontinued'
+                ? 'There are currently no products marked as discontinued.'
+                : 'No active products match your current search and filter criteria.'}
             </p>
           </div>
         ) : (
@@ -357,7 +518,11 @@ export const InventoryPage: React.FC = () => {
                         {item.sellingPrice != null ? `₱${item.sellingPrice.toFixed(2)}` : '—'}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        {isOutOfStock ? (
+                        {item.isActive === false ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                            Discontinued
+                          </span>
+                        ) : isOutOfStock ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30">
                             Out of Stock
                           </span>
@@ -372,14 +537,56 @@ export const InventoryPage: React.FC = () => {
                         )}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => openAdjustModal(item)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-indigo-600 hover:border-indigo-500 text-slate-200 hover:text-white text-xs font-medium transition-all"
-                        >
-                          <SlidersHorizontal className="w-3.5 h-3.5" />
-                          <span>Adjust</span>
-                        </button>
+                        <div className="inline-flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openAdjustModal(item)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-indigo-600 hover:border-indigo-500 text-slate-200 hover:text-white text-xs font-medium transition-all"
+                            title="Adjust Stock Quantity"
+                          >
+                            <SlidersHorizontal className="w-3.5 h-3.5" />
+                            <span>Adjust</span>
+                          </button>
+
+                          {isAdmin && (
+                            <>
+                              <button
+                                type="button"
+                                id={`btn-edit-product-${item.productId}`}
+                                onClick={() => openEditModal(item)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-teal-600 hover:border-teal-500 text-slate-200 hover:text-white text-xs font-medium transition-all"
+                                title="Edit Product Name & Category"
+                              >
+                                <Pencil className="w-3.5 h-3.5 text-teal-400" />
+                                <span>Edit</span>
+                              </button>
+
+                              {item.isActive !== false ? (
+                                <button
+                                  type="button"
+                                  id={`btn-discontinue-${item.productId}`}
+                                  onClick={() => openStatusModal(item, 'discontinue')}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-rose-900/40 bg-rose-950/40 hover:bg-rose-600 hover:border-rose-500 text-rose-300 hover:text-white text-xs font-medium transition-all"
+                                  title="Discontinue Product"
+                                >
+                                  <Archive className="w-3.5 h-3.5 text-rose-400" />
+                                  <span>Discontinue</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  id={`btn-activate-${item.productId}`}
+                                  onClick={() => openStatusModal(item, 'activate')}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-900/40 bg-emerald-950/40 hover:bg-emerald-600 hover:border-emerald-500 text-emerald-300 hover:text-white text-xs font-medium transition-all"
+                                  title="Reactivate Product"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Reactivate</span>
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -686,6 +893,198 @@ export const InventoryPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Product Modal (Admin Only) */}
+      {isEditModalOpen && editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-lg">
+                <Pencil className="w-5 h-5 text-indigo-400" />
+                <span>Edit Product</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Product Meta Pill */}
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">SKU Code</p>
+                <p className="text-sm font-mono font-bold text-white mt-0.5">{editTarget.productSKU}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Current Stock</p>
+                <p className="text-sm font-bold text-indigo-300 mt-0.5">
+                  {editTarget.quantityOnHand} <span className="text-xs font-normal text-slate-400">units</span>
+                </p>
+              </div>
+            </div>
+
+            {editError && (
+              <div className="rounded-xl p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                  Product Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Enter product title"
+                  className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-white text-sm focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                  Category *
+                </label>
+                <select
+                  value={editCategoryId}
+                  onChange={(e) => setEditCategoryId(e.target.value)}
+                  className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="" disabled>Select category</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-800 bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-semibold text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+                >
+                  {editSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Discontinue / Reactivate Modal (Admin Only) */}
+      {isStatusModalOpen && statusTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 font-bold text-lg text-white">
+                {statusAction === 'discontinue' ? (
+                  <>
+                    <Archive className="w-5 h-5 text-rose-400" />
+                    <span>Discontinue Product</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-5 h-5 text-emerald-400" />
+                    <span>Reactivate Product</span>
+                  </>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsStatusModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {statusError && (
+              <div className="rounded-xl p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+                <span>{statusError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3 text-sm text-slate-300">
+              {statusAction === 'discontinue' ? (
+                <>
+                  <p>
+                    Are you sure you want to discontinue{' '}
+                    <span className="font-semibold text-white">"{statusTarget.productName}"</span> (
+                    <code className="text-indigo-300 font-mono text-xs">{statusTarget.productSKU}</code>)?
+                  </p>
+                  <p className="text-xs text-slate-400 bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
+                    The product will be marked as discontinued and moved to the Discontinued tab. It will no longer appear in POS sales, but its historical transactions and inventory levels will be preserved.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    Are you sure you want to reactivate{' '}
+                    <span className="font-semibold text-white">"{statusTarget.productName}"</span> (
+                    <code className="text-indigo-300 font-mono text-xs">{statusTarget.productSKU}</code>)?
+                  </p>
+                  <p className="text-xs text-slate-400 bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
+                    This product will be restored to active inventory, becoming available once again for sales, reordering, and stock management.
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsStatusModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-800 bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-semibold text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleStatusSubmit}
+                disabled={statusSubmitting}
+                className={`flex-1 py-2.5 rounded-xl text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-lg ${
+                  statusAction === 'discontinue'
+                    ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
+                    : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
+                }`}
+              >
+                {statusSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <span>{statusAction === 'discontinue' ? 'Confirm Discontinue' : 'Confirm Reactivate'}</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
