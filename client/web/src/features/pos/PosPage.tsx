@@ -15,6 +15,7 @@ import {
   User,
   FileText,
   X,
+  Calendar,
 } from 'lucide-react';
 import {
   productsService,
@@ -26,6 +27,8 @@ import {
   Product,
   Customer,
   PaymentMethod,
+  PaymentStatus,
+  getPaymentMethodName,
   CreateSaleRequest,
   Sale,
 } from '../../types';
@@ -63,6 +66,9 @@ export const PosPage: React.FC = () => {
   // Payment state
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Cash);
   const [amountPaid, setAmountPaid] = useState<string>('');
+  const [checkBankName, setCheckBankName] = useState<string>('');
+  const [checkNumber, setCheckNumber] = useState<string>('');
+  const [checkDate, setCheckDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [submitting, setSubmitting] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
@@ -274,6 +280,9 @@ export const PosPage: React.FC = () => {
     setOrderDiscountPercent(0);
     setAmountPaid('');
     setDeliveryReceiptNo('');
+    setCheckBankName('');
+    setCheckNumber('');
+    setCheckDate(new Date().toISOString().split('T')[0]);
     setErrorBanner(null);
     searchInputRef.current?.focus();
   };
@@ -317,6 +326,13 @@ export const PosPage: React.FC = () => {
       return;
     }
 
+    if (paymentMethod === PaymentMethod.Check || paymentMethod === PaymentMethod.PostDatedCheck) {
+      if (!checkBankName.trim() || !checkNumber.trim() || !checkDate) {
+        setErrorBanner('Bank Name, Check Number, and Check/Maturity Date are required for Check / PDC payments.');
+        return;
+      }
+    }
+
     if (submitting) return; // Prevent double submission
 
     try {
@@ -349,6 +365,10 @@ export const PosPage: React.FC = () => {
           {
             amount: numericAmountPaid > 0 ? numericAmountPaid : cartTotal,
             method: paymentMethod,
+            bankName: (paymentMethod === PaymentMethod.Check || paymentMethod === PaymentMethod.PostDatedCheck) ? checkBankName.trim() : undefined,
+            checkNumber: (paymentMethod === PaymentMethod.Check || paymentMethod === PaymentMethod.PostDatedCheck) ? checkNumber.trim() : undefined,
+            checkDate: (paymentMethod === PaymentMethod.Check || paymentMethod === PaymentMethod.PostDatedCheck) ? checkDate : undefined,
+            status: paymentMethod === PaymentMethod.PostDatedCheck ? PaymentStatus.Pending : PaymentStatus.Cleared,
           },
         ],
       };
@@ -780,11 +800,11 @@ export const PosPage: React.FC = () => {
             </div>
 
             {/* Payment Method Selector */}
-            <div className="space-y-2 pt-2 border-t border-slate-800">
+            <div className="space-y-3 pt-2 border-t border-slate-800">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
                 Payment Method
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod(PaymentMethod.Cash)}
@@ -823,7 +843,99 @@ export const PosPage: React.FC = () => {
                   <CreditCard className="w-4 h-4 mb-1" />
                   <span>Transfer</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethod(PaymentMethod.Check);
+                    if (!checkDate) setCheckDate(new Date().toISOString().split('T')[0]);
+                  }}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-semibold transition-all ${
+                    paymentMethod === PaymentMethod.Check
+                      ? 'border-amber-500 bg-amber-500/10 text-amber-400 shadow-sm'
+                      : 'border-slate-800 bg-slate-900 text-slate-400 hover:bg-slate-800'
+                  }`}
+                >
+                  <FileText className="w-4 h-4 mb-1" />
+                  <span>Check</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethod(PaymentMethod.PostDatedCheck);
+                    if (!checkDate) setCheckDate(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
+                  }}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-semibold transition-all ${
+                    paymentMethod === PaymentMethod.PostDatedCheck
+                      ? 'border-purple-500 bg-purple-500/10 text-purple-400 shadow-sm'
+                      : 'border-slate-800 bg-slate-900 text-slate-400 hover:bg-slate-800'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4 mb-1" />
+                  <span>PDC</span>
+                </button>
               </div>
+
+              {/* Conditional Check & PDC Details Input */}
+              {(paymentMethod === PaymentMethod.Check || paymentMethod === PaymentMethod.PostDatedCheck) && (
+                <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3">
+                  <div className="text-xs font-bold text-amber-400 flex items-center justify-between">
+                    <span>Check / PDC Details</span>
+                    <span className="text-[10px] font-mono uppercase bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md">
+                      {paymentMethod === PaymentMethod.PostDatedCheck ? 'Post-Dated' : 'Standard Check'}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                        Bank Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. BDO, BPI, Metrobank"
+                        value={checkBankName}
+                        onChange={(e) => setCheckBankName(e.target.value)}
+                        className="w-full py-1.5 px-3 rounded-lg border border-slate-700 bg-slate-900 text-slate-200 text-xs focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                          Check Number *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. 0001234567"
+                          value={checkNumber}
+                          onChange={(e) => setCheckNumber(e.target.value)}
+                          className="w-full py-1.5 px-3 rounded-lg border border-slate-700 bg-slate-900 text-slate-200 text-xs font-mono focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                          {paymentMethod === PaymentMethod.PostDatedCheck ? 'Maturity Date *' : 'Check Date *'}
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={checkDate}
+                          onChange={(e) => setCheckDate(e.target.value)}
+                          className="w-full py-1.5 px-3 rounded-lg border border-slate-700 bg-slate-900 text-slate-200 text-xs focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  {paymentMethod === PaymentMethod.PostDatedCheck && (
+                    <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-300 flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
+                      <span>PDC payments will remain pending until marked cleared on maturity.</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Amount Paid & Change Calculation */}
@@ -943,8 +1055,8 @@ export const PosPage: React.FC = () => {
               </div>
               <div className="flex justify-between text-slate-400">
                 <span>Payment Method:</span>
-                <span className="text-white capitalize">
-                  {PaymentMethod[completedSale.payments[0]?.method ?? 0]}
+                <span className="text-white font-medium">
+                  {getPaymentMethodName(completedSale.payments[0]?.method)}
                 </span>
               </div>
               <div className="flex justify-between text-slate-400 border-t border-slate-800/80 pt-2">

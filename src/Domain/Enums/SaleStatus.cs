@@ -4,5 +4,6 @@ public enum SaleStatus
 {
     Draft = 1,
     Completed = 2,
-    Voided = 3
+    Voided = 3,
+    PendingClearance = 4
 }

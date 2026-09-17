@@ -22,7 +22,9 @@ public record ReportOverviewDto(
     int ActiveSkus,
     int LowStockCount,
     decimal TotalUnitsOnHand,
-    int OutOfStockCount
+    int OutOfStockCount,
+    int VoidedOrdersCount = 0,
+    decimal VoidedSalesAmount = 0m
 );
 
 public record SalesTrendDto(
@@ -54,6 +56,18 @@ public record SlowMovingProductDto(
     decimal QuantitySold,
     int? DaysSinceLastSale,
     DateTime? LastSaleDate
+);
+
+public record VoidedSaleDetailDto(
+    Guid SaleId,
+    string InvoiceNo,
+    string? DeliveryReceiptNo,
+    string CustomerName,
+    DateTime SaleDate,
+    decimal TotalAmount,
+    string? CheckNumber,
+    string? BankName,
+    string Reason
 );
 
 // Legacy records for backwards compatibility

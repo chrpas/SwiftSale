@@ -7,9 +7,22 @@ import {
   Ban,
   Eye,
   X,
+  CheckCircle,
 } from 'lucide-react';
 import { salesService, getErrorMessage } from '../../services/api';
-import { Sale, SaleStatus } from '../../types';
+import {
+  Sale,
+  getPaymentMethodName,
+  getSaleStatusName,
+  getPaymentStatusName,
+  isSaleCompleted,
+  isSalePendingClearance,
+  isSaleVoided,
+  isPaymentCleared,
+  isPaymentPending,
+  isCheckPayment,
+  Payment,
+} from '../../types';
 
 export const SalesHistoryPage: React.FC = () => {
   const [sales, setSales] = useState<Sale[]>([]);
@@ -17,11 +30,16 @@ export const SalesHistoryPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
 
-  // Void modal state
+  // Void & Check Clearance State
   const [voidTarget, setVoidTarget] = useState<Sale | null>(null);
   const [voidReason, setVoidReason] = useState('');
   const [voidSubmitting, setVoidSubmitting] = useState(false);
   const [voidError, setVoidError] = useState<string | null>(null);
+  const [clearCheckSubmitting, setClearCheckSubmitting] = useState(false);
+  const [pullBackTarget, setPullBackTarget] = useState<{ sale: Sale; payment: Payment } | null>(null);
+  const [pullBackReason, setPullBackReason] = useState('Insufficient funds - Items retrieved');
+  const [pullBackSubmitting, setPullBackSubmitting] = useState(false);
+  const [pullBackError, setPullBackError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,6 +85,49 @@ export const SalesHistoryPage: React.FC = () => {
       setVoidError(getErrorMessage(err));
     } finally {
       setVoidSubmitting(false);
+    }
+  };
+
+  const handleClearCheck = async (paymentId: string) => {
+    try {
+      setClearCheckSubmitting(true);
+      const updatedSale = await salesService.clearCheck(paymentId);
+      setSelectedSale(updatedSale);
+      setBanner(`Check payment cleared successfully for invoice ${updatedSale.invoiceNo}.`);
+      await loadSales();
+    } catch (err) {
+      console.error('Failed to clear check', err);
+      alert(getErrorMessage(err));
+    } finally {
+      setClearCheckSubmitting(false);
+    }
+  };
+
+  const handlePullBackSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pullBackTarget) return;
+
+    if (!pullBackReason.trim()) {
+      setPullBackError('Reason is required.');
+      return;
+    }
+
+    try {
+      setPullBackSubmitting(true);
+      setPullBackError(null);
+      const updatedSale = await salesService.dishonorCheckAndReturn(
+        pullBackTarget.sale.id,
+        pullBackTarget.payment.id,
+        pullBackReason.trim()
+      );
+      setBanner(`Invoice ${updatedSale.invoiceNo} voided, check marked Dishonored, and stock items returned to inventory.`);
+      setPullBackTarget(null);
+      setSelectedSale(null);
+      await loadSales();
+    } catch (err) {
+      setPullBackError(getErrorMessage(err));
+    } finally {
+      setPullBackSubmitting(false);
     }
   };
 
@@ -167,14 +228,16 @@ export const SalesHistoryPage: React.FC = () => {
                     <td className="py-3 px-4 text-center">
                       <span
                         className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          sale.status === SaleStatus.Completed
+                          isSaleCompleted(sale.status)
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : sale.status === SaleStatus.Voided
+                            : isSalePendingClearance(sale.status)
+                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            : isSaleVoided(sale.status)
                             ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                             : 'bg-slate-800 text-slate-400'
                         }`}
                       >
-                        {SaleStatus[sale.status]}
+                        {getSaleStatusName(sale.status)}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center">
@@ -187,7 +250,7 @@ export const SalesHistoryPage: React.FC = () => {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        {sale.status === SaleStatus.Completed && (
+                        {isSaleCompleted(sale.status) && (
                           <button
                             type="button"
                             onClick={() => {
@@ -246,7 +309,7 @@ export const SalesHistoryPage: React.FC = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Status:</span>
-                <span className="font-semibold text-white">{SaleStatus[selectedSale.status]}</span>
+                <span className="font-semibold text-white">{getSaleStatusName(selectedSale.status)}</span>
               </div>
             </div>
 
@@ -274,6 +337,76 @@ export const SalesHistoryPage: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Payment Details & Clearance Actions */}
+            <div className="space-y-2 pt-3 border-t border-slate-800">
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Payment & Clearance Details
+              </div>
+              <div className="space-y-2">
+                {selectedSale.payments && selectedSale.payments.map((p) => (
+                  <div key={p.id} className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-white flex items-center gap-1.5">
+                        <span>₱{p.amount.toFixed(2)}</span>
+                        <span className="text-[11px] font-normal text-slate-400">
+                          ({getPaymentMethodName(p.method)})
+                        </span>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        isPaymentCleared(p.status)
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                          : isPaymentPending(p.status)
+                          ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                          : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                      }`}>
+                        {getPaymentStatusName(p.status)}
+                      </span>
+                    </div>
+
+                    {(p.bankName || p.checkNumber || p.checkDate) && (
+                      <div className="text-slate-300 font-mono text-[11px] space-y-0.5 bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                        <div>Bank: <span className="font-bold text-white">{p.bankName || 'N/A'}</span></div>
+                        <div>Check #: <span className="font-bold text-amber-300">{p.checkNumber || p.transactionRef || 'N/A'}</span></div>
+                        <div>Check/Maturity Date: <span className="text-slate-300">{p.checkDate ? new Date(p.checkDate).toLocaleDateString() : 'N/A'}</span></div>
+                        {p.dishonorReason && (
+                          <div className="text-rose-400 font-semibold mt-1">Reason: {p.dishonorReason}</div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {isPaymentPending(p.status) && (
+                        <button
+                          type="button"
+                          onClick={() => handleClearCheck(p.id)}
+                          disabled={clearCheckSubmitting}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[11px] transition-colors flex items-center gap-1 shadow-sm disabled:opacity-50"
+                        >
+                          {clearCheckSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                          <span>Mark Check Cleared</span>
+                        </button>
+                      )}
+                      {isCheckPayment(p.method) && !isSaleVoided(selectedSale.status) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPullBackTarget({ sale: selectedSale, payment: p });
+                            setPullBackReason('Insufficient funds - Items retrieved');
+                            setPullBackError(null);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 font-semibold text-[11px] transition-colors flex items-center gap-1"
+                        >
+                          <Ban className="w-3 h-3" />
+                          <span>Pull Back Items & Void (Bounced Check)</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="pt-2 border-t border-slate-800 flex justify-between text-base font-bold">
@@ -333,6 +466,63 @@ export const SalesHistoryPage: React.FC = () => {
                   className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold flex items-center justify-center gap-2"
                 >
                   {voidSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Confirm Void</span>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Pull-Back Confirmation Modal */}
+      {pullBackTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2 text-rose-400 font-bold text-lg">
+              <Ban className="w-5 h-5" />
+              <span>Pull Back Items & Void (Bounced Check)</span>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              This will void Invoice <span className="font-mono font-bold text-white">#{pullBackTarget.sale.invoiceNo}</span>, flag Check <span className="font-mono font-bold text-amber-300">#{pullBackTarget.payment.checkNumber || pullBackTarget.payment.transactionRef || 'N/A'}</span> as <span className="text-rose-400 font-bold">Dishonored</span>, and return all <span className="font-bold text-white">{pullBackTarget.sale.items.reduce((s, i) => s + i.quantity, 0)} items</span> back to inventory via an automated <span className="text-indigo-400 font-mono font-semibold">SaleVoidReturn</span> movement.
+            </p>
+
+            {pullBackError && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs rounded-xl font-medium">
+                {pullBackError}
+              </div>
+            )}
+
+            <form onSubmit={handlePullBackSubmit} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                  Reason for Pull-Back / Bounced Check *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Insufficient funds - NSF, account closed"
+                  value={pullBackReason}
+                  onChange={(e) => setPullBackReason(e.target.value)}
+                  className="w-full py-2 px-3 rounded-xl border border-slate-700 bg-slate-950 text-white text-sm focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPullBackTarget(null)}
+                  className="flex-1 py-2 rounded-xl border border-slate-800 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={pullBackSubmitting}
+                  className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-lg shadow-rose-900/30 transition-colors"
+                >
+                  {pullBackSubmitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <span>Confirm Pull-Back & Void</span>
+                  )}
                 </button>
               </div>
             </form>

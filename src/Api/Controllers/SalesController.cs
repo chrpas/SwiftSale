@@ -85,6 +85,36 @@ public class SalesController : ControllerBase
         var voided = await _saleService.VoidSaleAsync(voidDto, cancellationToken);
         return Ok(voided);
     }
+
+    /// <summary>
+    /// Marks a pending check payment as cleared and updates the sale balance and status.
+    /// </summary>
+    [HttpPost("payments/{paymentId:guid}/clear")]
+    [ProducesResponseType(typeof(SaleDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SaleDto>> ClearPayment(Guid paymentId, CancellationToken cancellationToken = default)
+    {
+        var sale = await _saleService.ClearCheckPaymentAsync(paymentId, cancellationToken);
+        return Ok(sale);
+    }
+
+    /// <summary>
+    /// Marks a check payment as dishonored (bounced), voids the sale, and returns all items to inventory.
+    /// </summary>
+    [HttpPost("{saleId:guid}/payments/{paymentId:guid}/dishonor-return")]
+    [ProducesResponseType(typeof(SaleDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SaleDto>> DishonorCheckAndReturn(
+        Guid saleId,
+        Guid paymentId,
+        [FromBody] DishonorCheckRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var sale = await _saleService.DishonorCheckAndReturnSaleAsync(saleId, paymentId, request.Reason, cancellationToken);
+        return Ok(sale);
+    }
 }
 
 public record VoidSaleRequest(string Reason);

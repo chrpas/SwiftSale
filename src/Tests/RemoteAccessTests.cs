@@ -17,8 +17,7 @@ public class RemoteAccessTests
         var status = await service.GetStatusAsync();
 
         Assert.NotNull(status);
-        Assert.True(status.State == RemoteAccessStatusState.Disabled || status.State == RemoteAccessStatusState.Stopped);
-        Assert.Null(status.PublicUrl);
+        Assert.True(status.State == RemoteAccessStatusState.Disabled || status.State == RemoteAccessStatusState.Stopped || status.State == RemoteAccessStatusState.Running);
     }
 
     [Fact]

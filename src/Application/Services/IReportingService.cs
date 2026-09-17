@@ -8,5 +8,6 @@ public interface IReportingService
     Task<List<SalesTrendDto>> GetSalesTrendAsync(ReportFilterParams filters, CancellationToken cancellationToken = default);
     Task<List<TopProductDto>> GetTopProductsAsync(ReportFilterParams filters, int limit = 20, CancellationToken cancellationToken = default);
     Task<List<SlowMovingProductDto>> GetSlowMovingProductsAsync(ReportFilterParams filters, CancellationToken cancellationToken = default);
+    Task<List<VoidedSaleDetailDto>> GetVoidedSalesAsync(ReportFilterParams filters, CancellationToken cancellationToken = default);
     Task<byte[]> GeneratePdfReportAsync(ReportFilterParams filters, CancellationToken cancellationToken = default);
 }

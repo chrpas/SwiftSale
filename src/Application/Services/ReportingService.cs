@@ -91,6 +91,42 @@ public class ReportingService : IReportingService, IReportService
             }
         }
 
+        // Calculate Voided Orders & Amounts
+        var voidedSalesQuery = _db.Sales
+            .AsNoTracking()
+            .Where(s => s.Status == SaleStatus.Voided);
+
+        if (filters.StartDate.HasValue)
+        {
+            var startUtc = DateTime.SpecifyKind(filters.StartDate.Value, DateTimeKind.Utc);
+            voidedSalesQuery = voidedSalesQuery.Where(s => s.SaleDate >= startUtc);
+        }
+
+        if (filters.EndDate.HasValue)
+        {
+            var endUtc = DateTime.SpecifyKind(filters.EndDate.Value, DateTimeKind.Utc);
+            voidedSalesQuery = voidedSalesQuery.Where(s => s.SaleDate <= endUtc);
+        }
+
+        if (filters.PaymentMethod.HasValue)
+        {
+            voidedSalesQuery = voidedSalesQuery.Where(s => s.Payments.Any(p => p.Method == filters.PaymentMethod.Value));
+        }
+
+        if (filters.ProductId.HasValue)
+        {
+            voidedSalesQuery = voidedSalesQuery.Where(s => s.Items.Any(i => i.ProductId == filters.ProductId.Value));
+        }
+
+        if (filters.CategoryId.HasValue)
+        {
+            voidedSalesQuery = voidedSalesQuery.Where(s => s.Items.Any(i => i.Product != null && i.Product.CategoryId == filters.CategoryId.Value));
+        }
+
+        var voidedSales = await voidedSalesQuery.ToListAsync(cancellationToken);
+        int voidedOrdersCount = voidedSales.Count;
+        decimal voidedSalesAmount = voidedSales.Sum(s => s.Total);
+
         return new ReportOverviewDto(
             TotalSales: Math.Round(totalSales, 2),
             TotalOrders: completedSales.Count,
@@ -101,7 +137,9 @@ public class ReportingService : IReportingService, IReportService
             ActiveSkus: activeSkus,
             LowStockCount: lowStockCount,
             TotalUnitsOnHand: totalUnitsOnHand,
-            OutOfStockCount: outOfStockCount
+            OutOfStockCount: outOfStockCount,
+            VoidedOrdersCount: voidedOrdersCount,
+            VoidedSalesAmount: Math.Round(voidedSalesAmount, 2)
         );
     }
 
@@ -283,12 +321,101 @@ public class ReportingService : IReportingService, IReportService
             .ToList();
     }
 
+    public async Task<List<VoidedSaleDetailDto>> GetVoidedSalesAsync(ReportFilterParams filters, CancellationToken cancellationToken = default)
+    {
+        var voidedSalesQuery = _db.Sales
+            .AsNoTracking()
+            .Include(s => s.Customer)
+            .Include(s => s.Payments)
+            .Where(s => s.Status == SaleStatus.Voided);
+
+        if (filters.StartDate.HasValue)
+        {
+            var startUtc = DateTime.SpecifyKind(filters.StartDate.Value, DateTimeKind.Utc);
+            voidedSalesQuery = voidedSalesQuery.Where(s => s.SaleDate >= startUtc);
+        }
+
+        if (filters.EndDate.HasValue)
+        {
+            var endUtc = DateTime.SpecifyKind(filters.EndDate.Value, DateTimeKind.Utc);
+            voidedSalesQuery = voidedSalesQuery.Where(s => s.SaleDate <= endUtc);
+        }
+
+        if (filters.PaymentMethod.HasValue)
+        {
+            voidedSalesQuery = voidedSalesQuery.Where(s => s.Payments.Any(p => p.Method == filters.PaymentMethod.Value));
+        }
+
+        if (filters.ProductId.HasValue)
+        {
+            voidedSalesQuery = voidedSalesQuery.Where(s => s.Items.Any(i => i.ProductId == filters.ProductId.Value));
+        }
+
+        if (filters.CategoryId.HasValue)
+        {
+            voidedSalesQuery = voidedSalesQuery.Where(s => s.Items.Any(i => i.Product != null && i.Product.CategoryId == filters.CategoryId.Value));
+        }
+
+        var sales = await voidedSalesQuery
+            .OrderByDescending(s => s.SaleDate)
+            .ToListAsync(cancellationToken);
+
+        var voidedSaleIds = sales.Select(s => s.Id).ToList();
+
+        var voidMovements = await _db.StockMovements
+            .AsNoTracking()
+            .Where(m => m.ReferenceId.HasValue && voidedSaleIds.Contains(m.ReferenceId.Value) && m.Type == StockMovementType.SaleVoidReturn)
+            .ToListAsync(cancellationToken);
+
+        var movementReasons = voidMovements
+            .GroupBy(m => m.ReferenceId!.Value)
+            .ToDictionary(g => g.Key, g => g.First().Reason);
+
+        var result = new List<VoidedSaleDetailDto>();
+
+        foreach (var sale in sales)
+        {
+            var checkPayment = sale.Payments.FirstOrDefault(p => !string.IsNullOrEmpty(p.DishonorReason) || !string.IsNullOrEmpty(p.CheckNumber));
+            
+            string? checkNo = checkPayment?.CheckNumber ?? checkPayment?.ReferenceNo;
+            string? bankName = checkPayment?.BankName;
+
+            string? reason = checkPayment?.DishonorReason;
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                if (movementReasons.TryGetValue(sale.Id, out var mReason) && !string.IsNullOrWhiteSpace(mReason))
+                {
+                    reason = mReason;
+                }
+                else
+                {
+                    reason = "Sale Voided";
+                }
+            }
+
+            result.Add(new VoidedSaleDetailDto(
+                SaleId: sale.Id,
+                InvoiceNo: sale.InvoiceNo,
+                DeliveryReceiptNo: sale.DeliveryReceiptNo,
+                CustomerName: sale.Customer?.Name ?? "Walk-in Customer",
+                SaleDate: sale.SaleDate,
+                TotalAmount: sale.Total,
+                CheckNumber: checkNo,
+                BankName: bankName,
+                Reason: reason
+            ));
+        }
+
+        return result;
+    }
+
     public async Task<byte[]> GeneratePdfReportAsync(ReportFilterParams filters, CancellationToken cancellationToken = default)
     {
         var overview = await GetOverviewAsync(filters, cancellationToken);
         var trend = await GetSalesTrendAsync(filters, cancellationToken);
         var topProducts = await GetTopProductsAsync(filters, 25, cancellationToken);
         var slowMoving = await GetSlowMovingProductsAsync(filters, cancellationToken);
+        var voidedSales = await GetVoidedSalesAsync(filters, cancellationToken);
 
         var document = Document.Create(container =>
         {
@@ -299,7 +426,7 @@ public class ReportingService : IReportingService, IReportService
                 page.DefaultTextStyle(x => x.FontSize(9).FontColor("#1E293B"));
 
                 page.Header().Element(c => ComposeHeader(c, filters));
-                page.Content().Element(c => ComposeContent(c, overview, trend, topProducts, slowMoving, filters));
+                page.Content().Element(c => ComposeContent(c, overview, trend, topProducts, slowMoving, voidedSales, filters));
                 page.Footer().Element(ComposeFooter);
             });
         });
@@ -353,6 +480,7 @@ public class ReportingService : IReportingService, IReportService
         List<SalesTrendDto> trend,
         List<TopProductDto> topProducts,
         List<SlowMovingProductDto> slowMoving,
+        List<VoidedSaleDetailDto> voidedSales,
         ReportFilterParams filters)
     {
         container.Column(col =>
@@ -364,49 +492,59 @@ public class ReportingService : IReportingService, IReportService
             col.Item().Text("Summary of commercial revenue, profitability, COGS, and current asset position.")
                 .FontSize(8).FontColor("#64748B").Italic();
 
-            // 4 KPI Cards Grid
+            // 5 KPI Cards Grid
             col.Item().PaddingTop(10).Row(row =>
             {
                 // Card 1: Total Revenue
-                row.RelativeItem().Background("#F2F7F4").Border(1).BorderColor("#D1E7DD").Padding(8).Column(c =>
+                row.RelativeItem().Background("#F2F7F4").Border(1).BorderColor("#D1E7DD").Padding(6).Column(c =>
                 {
-                    c.Item().Text("TOTAL REVENUE").FontSize(7).Bold().FontColor("#0D7A5F");
-                    c.Item().Text($"₱{overview.TotalSales:N2}").FontSize(13).Bold().FontColor("#0D7A5F");
-                    c.Item().Text($"{overview.TotalOrders} completed orders").FontSize(7).FontColor("#64748B");
+                    c.Item().Text("REVENUE").FontSize(6.5f).Bold().FontColor("#0D7A5F");
+                    c.Item().Text($"₱{overview.TotalSales:N2}").FontSize(11).Bold().FontColor("#0D7A5F");
+                    c.Item().Text($"{overview.TotalOrders} completed orders").FontSize(6.5f).FontColor("#64748B");
                 });
 
-                row.ConstantItem(8);
+                row.ConstantItem(5);
 
                 // Card 2: Gross Profit & Margin
-                row.RelativeItem().Background("#F8FAFC").Border(1).BorderColor("#E2E8F0").Padding(8).Column(c =>
+                row.RelativeItem().Background("#F8FAFC").Border(1).BorderColor("#E2E8F0").Padding(6).Column(c =>
                 {
                     c.Item().Row(r =>
                     {
-                        r.RelativeItem().Text("GROSS PROFIT").FontSize(7).Bold().FontColor("#334155");
-                        r.ConstantItem(40).AlignRight().Text($"{overview.GrossMarginPercent:F2}%").FontSize(7).Bold().FontColor("#0D7A5F");
+                        r.RelativeItem().Text("GROSS PROFIT").FontSize(6.5f).Bold().FontColor("#334155");
+                        r.ConstantItem(35).AlignRight().Text($"{overview.GrossMarginPercent:F1}%").FontSize(6.5f).Bold().FontColor("#0D7A5F");
                     });
-                    c.Item().Text($"₱{overview.GrossProfit:N2}").FontSize(13).Bold().FontColor("#1E293B");
-                    c.Item().Text("Margin on completed sales").FontSize(7).FontColor("#64748B");
+                    c.Item().Text($"₱{overview.GrossProfit:N2}").FontSize(11).Bold().FontColor("#1E293B");
+                    c.Item().Text("Net margin realized").FontSize(6.5f).FontColor("#64748B");
                 });
 
-                row.ConstantItem(8);
+                row.ConstantItem(5);
 
                 // Card 3: COGS
-                row.RelativeItem().Background("#F8FAFC").Border(1).BorderColor("#E2E8F0").Padding(8).Column(c =>
+                row.RelativeItem().Background("#F8FAFC").Border(1).BorderColor("#E2E8F0").Padding(6).Column(c =>
                 {
-                    c.Item().Text("COST OF GOODS SOLD").FontSize(7).Bold().FontColor("#64748B");
-                    c.Item().Text($"₱{overview.CostOfGoodsSold:N2}").FontSize(13).Bold().FontColor("#475569");
-                    c.Item().Text("Weighted average cost").FontSize(7).FontColor("#64748B");
+                    c.Item().Text("COGS").FontSize(6.5f).Bold().FontColor("#64748B");
+                    c.Item().Text($"₱{overview.CostOfGoodsSold:N2}").FontSize(11).Bold().FontColor("#475569");
+                    c.Item().Text("Average cost").FontSize(6.5f).FontColor("#64748B");
                 });
 
-                row.ConstantItem(8);
+                row.ConstantItem(5);
 
                 // Card 4: Inventory Health
-                row.RelativeItem().Background("#F8FAFC").Border(1).BorderColor("#E2E8F0").Padding(8).Column(c =>
+                row.RelativeItem().Background("#F8FAFC").Border(1).BorderColor("#E2E8F0").Padding(6).Column(c =>
                 {
-                    c.Item().Text("INVENTORY ASSET VALUE").FontSize(7).Bold().FontColor("#64748B");
-                    c.Item().Text($"₱{overview.InventoryValue:N2}").FontSize(13).Bold().FontColor("#1E293B");
-                    c.Item().Text($"{overview.ActiveSkus} SKUs • {overview.LowStockCount} low stock").FontSize(7).FontColor("#D97706");
+                    c.Item().Text("INVENTORY VALUE").FontSize(6.5f).Bold().FontColor("#64748B");
+                    c.Item().Text($"₱{overview.InventoryValue:N2}").FontSize(11).Bold().FontColor("#1E293B");
+                    c.Item().Text($"{overview.ActiveSkus} SKUs • {overview.LowStockCount} low").FontSize(6.5f).FontColor("#D97706");
+                });
+
+                row.ConstantItem(5);
+
+                // Card 5: Voided Orders & Reversals
+                row.RelativeItem().Background("#FFF1F2").Border(1).BorderColor("#FECDD3").Padding(6).Column(c =>
+                {
+                    c.Item().Text("VOIDED ORDERS").FontSize(6.5f).Bold().FontColor("#E11D48");
+                    c.Item().Text($"₱{overview.VoidedSalesAmount:N2}").FontSize(11).Bold().FontColor("#BE123C");
+                    c.Item().Text($"{overview.VoidedOrdersCount} voided orders").FontSize(6.5f).FontColor("#9F1239");
                 });
             });
 
@@ -450,6 +588,75 @@ public class ReportingService : IReportingService, IReportService
                         table.Cell().Background(bg).Padding(4).AlignRight().Text($"₱{item.Revenue:N2}").FontSize(7).Bold();
                         table.Cell().Background(bg).Padding(4).AlignRight().Text($"₱{item.GrossProfit:N2}").FontSize(7).FontColor("#0D7A5F");
                         table.Cell().Background(bg).Padding(4).AlignRight().Text($"{margin:F1}%").FontSize(7);
+                        rowIdx++;
+                    }
+                }
+            });
+
+            // Page 1 Section: Voided Sales & Check Reversals (Placed directly below DAILY SALES & MARGIN BREAKDOWN)
+            col.Item().PaddingTop(14).Text("VOIDED SALES & CHECK REVERSALS").FontSize(9).Bold().FontColor("#991B1B");
+
+            col.Item().PaddingTop(6).Table(table =>
+            {
+                table.ColumnsDefinition(columns =>
+                {
+                    columns.ConstantColumn(85); // Invoice / DR #
+                    columns.ConstantColumn(65); // Date
+                    columns.RelativeColumn(2);  // Customer Name
+                    columns.RelativeColumn(2);  // Check # & Bank
+                    columns.RelativeColumn(3);  // Reason
+                    columns.ConstantColumn(65); // Amount
+                });
+
+                table.Header(header =>
+                {
+                    header.Cell().Background("#991B1B").Padding(4).Text("Invoice / DR #").FontSize(7).Bold().FontColor("#FFFFFF");
+                    header.Cell().Background("#991B1B").Padding(4).Text("Date").FontSize(7).Bold().FontColor("#FFFFFF");
+                    header.Cell().Background("#991B1B").Padding(4).Text("Customer").FontSize(7).Bold().FontColor("#FFFFFF");
+                    header.Cell().Background("#991B1B").Padding(4).Text("Check & Bank").FontSize(7).Bold().FontColor("#FFFFFF");
+                    header.Cell().Background("#991B1B").Padding(4).Text("Void / Bounced Reason").FontSize(7).Bold().FontColor("#FFFFFF");
+                    header.Cell().Background("#991B1B").Padding(4).AlignRight().Text("Amount").FontSize(7).Bold().FontColor("#FFFFFF");
+                });
+
+                if (voidedSales.Count == 0)
+                {
+                    table.Cell().ColumnSpan(6).Padding(8).AlignCenter().Text("No voided sales or bounced checks recorded in selected timeframe.").FontSize(8).FontColor("#0D7A5F");
+                }
+                else
+                {
+                    int rowIdx = 0;
+                    foreach (var item in voidedSales)
+                    {
+                        var bg = rowIdx % 2 == 0 ? "#FFFFFF" : "#FFF1F2";
+
+                        table.Cell().Background(bg).Padding(4).Column(c =>
+                        {
+                            c.Item().Text(item.InvoiceNo).FontSize(7).Bold().FontColor("#991B1B");
+                            if (!string.IsNullOrEmpty(item.DeliveryReceiptNo))
+                            {
+                                c.Item().Text($"DR: {item.DeliveryReceiptNo}").FontSize(6.5f).FontColor("#0D9488");
+                            }
+                        });
+                        table.Cell().Background(bg).Padding(4).Text(item.SaleDate.ToString("yyyy-MM-dd")).FontSize(7);
+                        table.Cell().Background(bg).Padding(4).Text(item.CustomerName).FontSize(7).SemiBold();
+                        table.Cell().Background(bg).Padding(4).Column(c =>
+                        {
+                            if (!string.IsNullOrEmpty(item.CheckNumber))
+                            {
+                                c.Item().Text($"CHK: {item.CheckNumber}").FontSize(7).Bold().FontColor("#B45309");
+                                if (!string.IsNullOrEmpty(item.BankName))
+                                {
+                                    c.Item().Text(item.BankName).FontSize(6.5f).FontColor("#64748B");
+                                }
+                            }
+                            else
+                            {
+                                c.Item().Text("N/A").FontSize(7).FontColor("#94A3B8");
+                            }
+                        });
+                        table.Cell().Background(bg).Padding(4).Text(item.Reason).FontSize(7).FontColor("#991B1B");
+                        table.Cell().Background(bg).Padding(4).AlignRight().Text($"₱{item.TotalAmount:N2}").FontSize(7).Bold().FontColor("#991B1B");
+
                         rowIdx++;
                     }
                 }

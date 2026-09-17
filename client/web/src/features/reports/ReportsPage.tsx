@@ -14,6 +14,7 @@ import {
   Boxes,
   Percent,
   ShoppingBag,
+  Ban,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -30,6 +31,7 @@ import {
   SalesTrendItem,
   TopProductReportItem,
   SlowMovingProductReportItem,
+  VoidedSaleDetail,
   ReportFilterParams,
   Category,
 } from '../../types';
@@ -50,6 +52,7 @@ export const ReportsPage: React.FC = () => {
   const [trend, setTrend] = useState<SalesTrendItem[]>([]);
   const [topProducts, setTopProducts] = useState<TopProductReportItem[]>([]);
   const [slowMoving, setSlowMoving] = useState<SlowMovingProductReportItem[]>([]);
+  const [voidedSales, setVoidedSales] = useState<VoidedSaleDetail[]>([]);
 
   // UI State
   const [activeVelocityTab, setActiveVelocityTab] = useState<'top' | 'slow'>('top');
@@ -145,17 +148,19 @@ export const ReportsPage: React.FC = () => {
       setBannerMessage(null);
       const filters = buildFilterParams();
 
-      const [ovData, trData, topData, slowData] = await Promise.all([
+      const [ovData, trData, topData, slowData, voidedData] = await Promise.all([
         reportsService.getOverview(filters),
         reportsService.getSalesTrend(filters),
         reportsService.getTopProducts(filters, 20),
         reportsService.getSlowMoving(filters),
+        reportsService.getVoidedSales(filters),
       ]);
 
       setOverview(ovData);
       setTrend(trData);
       setTopProducts(topData);
       setSlowMoving(slowData);
+      setVoidedSales(voidedData);
     } catch (err) {
       console.error('Failed to load reports data', err);
       setBannerMessage({
@@ -361,8 +366,8 @@ export const ReportsPage: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* Row 1: 4 KPI Stat Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Row 1: 5 KPI Stat Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* Card 1: Total Sales */}
             <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-2 hover:border-slate-700 transition-colors">
               <div className="flex items-center justify-between">
@@ -442,6 +447,25 @@ export const ReportsPage: React.FC = () => {
                 >
                   {overview?.lowStockCount ?? 0} Low Stock
                 </span>
+              </div>
+            </div>
+
+            {/* Card 5: Voided Orders */}
+            <div className="bg-slate-900/80 border border-rose-900/40 rounded-2xl p-5 shadow-lg space-y-2 hover:border-rose-700/50 transition-colors">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-rose-400">
+                  Voided Orders
+                </span>
+                <div className="p-2 rounded-xl bg-rose-500/15 text-rose-400">
+                  <Ban className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-2xl font-bold text-rose-300 tracking-tight">
+                {formatCurrency(overview?.voidedSalesAmount ?? 0)}
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-rose-400/80">
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>{overview?.voidedOrdersCount ?? 0} voided orders in period</span>
               </div>
             </div>
           </div>
@@ -611,6 +635,79 @@ export const ReportsPage: React.FC = () => {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Row 2.5: Voided Sales & Check Reversals Section (Placed directly below Daily Sales & Margin Breakdown) */}
+          <div className="bg-slate-900/80 border border-rose-900/40 rounded-2xl overflow-hidden shadow-xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-rose-900/40 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-rose-300 flex items-center gap-2">
+                  <Ban className="w-4 h-4 text-rose-400" />
+                  Voided Sales & Check Reversals
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Record of voided transactions, dishonored bounced checks, and stock return entries in the selected period.
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                {voidedSales.length} Voided
+              </span>
+            </div>
+
+            {voidedSales.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 text-xs">
+                No voided sales or bounced checks recorded in the selected timeframe.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400 font-semibold bg-slate-950/60">
+                      <th className="py-2.5 px-3">Invoice # / DR #</th>
+                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5 px-3">Customer</th>
+                      <th className="py-2.5 px-3">Check & Bank Details</th>
+                      <th className="py-2.5 px-3">Void / Bounced Reason</th>
+                      <th className="py-2.5 px-3 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {voidedSales.map((v) => (
+                      <tr key={v.saleId} className="hover:bg-slate-800/30 transition-colors">
+                        <td className="py-2.5 px-3 font-mono">
+                          <div className="font-semibold text-rose-400">{v.invoiceNo}</div>
+                          {v.deliveryReceiptNo && (
+                            <div className="text-[10px] text-teal-400">DR: {v.deliveryReceiptNo}</div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-400">
+                          {new Date(v.saleDate).toLocaleDateString()}
+                        </td>
+                        <td className="py-2.5 px-3 font-medium text-white">
+                          {v.customerName}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono">
+                          {v.checkNumber ? (
+                            <div>
+                              <span className="font-bold text-amber-300">CHK: {v.checkNumber}</span>
+                              {v.bankName && <div className="text-[10px] text-slate-400">{v.bankName}</div>}
+                            </div>
+                          ) : (
+                            <span className="text-slate-500">N/A</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-rose-300 font-medium">
+                          {v.reason}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-rose-400">
+                          ₱{v.totalAmount.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Row 3: Product Velocity Tables (Tabs for Top Selling & Slow Moving) */}

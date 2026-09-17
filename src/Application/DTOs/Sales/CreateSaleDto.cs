@@ -13,7 +13,11 @@ public record CreateSaleItemDto(
 public record CreatePaymentDto(
     decimal Amount,
     PaymentMethod Method,
-    string? ReferenceNo = null
+    string? ReferenceNo = null,
+    string? BankName = null,
+    string? CheckNumber = null,
+    DateTime? CheckDate = null,
+    PaymentStatus? Status = null
 );
 
 public record CreateSaleDto(
@@ -25,5 +29,9 @@ public record CreateSaleDto(
 
 public record VoidSaleDto(
     Guid SaleId,
+    string Reason
+);
+
+public record DishonorCheckRequest(
     string Reason
 );

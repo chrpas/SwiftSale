@@ -17,7 +17,7 @@ public class NgrokRemoteAccessService : IRemoteAccessService, IDisposable
 {
     private readonly ILogger<NgrokRemoteAccessService> _logger;
     private readonly IConfiguration _configuration;
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IServiceScopeFactory? _scopeFactory;
     private readonly HttpClient _httpClient;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
 
@@ -42,7 +42,7 @@ public class NgrokRemoteAccessService : IRemoteAccessService, IDisposable
     public NgrokRemoteAccessService(
         ILogger<NgrokRemoteAccessService> logger,
         IConfiguration configuration,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory? scopeFactory = null)
     {
         _logger       = logger;
         _configuration = configuration;
@@ -265,6 +265,7 @@ public class NgrokRemoteAccessService : IRemoteAccessService, IDisposable
     /// </summary>
     private async Task RefreshCachedSettingsAsync(CancellationToken ct)
     {
+        if (_scopeFactory == null) return;
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
@@ -285,6 +286,7 @@ public class NgrokRemoteAccessService : IRemoteAccessService, IDisposable
     /// </summary>
     private async Task PersistSettingsAsync(CancellationToken ct)
     {
+        if (_scopeFactory == null) return;
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 

@@ -22,8 +22,14 @@ public record PaymentDto(
     Guid Id,
     decimal Amount,
     PaymentMethod Method,
+    PaymentStatus Status,
     string? ReferenceNo,
-    DateTime PaymentDate
+    DateTime PaymentDate,
+    string? BankName = null,
+    string? CheckNumber = null,
+    DateTime? CheckDate = null,
+    DateTime? ClearedDate = null,
+    string? DishonorReason = null
 );
 
 public record SaleDto(

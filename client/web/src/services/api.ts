@@ -154,6 +154,14 @@ export const salesService = {
   voidSale: async (id: string, reason: string): Promise<void> => {
     await apiClient.post(`/sales/${id}/void`, { reason });
   },
+  clearCheck: async (paymentId: string): Promise<Sale> => {
+    const response = await apiClient.post<Sale>(`/sales/payments/${paymentId}/clear`);
+    return response.data;
+  },
+  dishonorCheckAndReturn: async (saleId: string, paymentId: string, reason: string): Promise<Sale> => {
+    const response = await apiClient.post<Sale>(`/sales/${saleId}/payments/${paymentId}/dishonor-return`, { reason });
+    return response.data;
+  },
 };
 
 export const customersService = {
@@ -221,6 +229,10 @@ export const reportsService = {
   },
   getSlowMoving: async (filters?: ReportFilterParams): Promise<SlowMovingProductReportItem[]> => {
     const response = await apiClient.get<SlowMovingProductReportItem[]>('/reports/slow-moving-products', { params: filters });
+    return response.data;
+  },
+  getVoidedSales: async (filters?: ReportFilterParams): Promise<import('../types').VoidedSaleDetail[]> => {
+    const response = await apiClient.get<import('../types').VoidedSaleDetail[]>('/reports/voided', { params: filters });
     return response.data;
   },
   downloadPdf: async (filters?: ReportFilterParams): Promise<void> => {

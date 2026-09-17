@@ -102,18 +102,25 @@ The script will automatically:
 
 ### 🛒 POS Terminal (`/sales/new`)
 - Fast product search by name or SKU with keyboard navigation
-- Cart with **line-item discounts** and **multiple payment methods** (Cash, Card, GCash, etc.)
+- Cart with **line-item discounts**, **order-level percentage discounts**, and **multiple payment methods** (Cash, Card, GCash, Check, Post-Dated Check)
+- **Check & Post-Dated Check (PDC) Support**: Capture Bank Name, Check Number, and Check/Maturity Date during checkout. Automatically sets PDC payment status to `Pending`
 - **Packaging units** support — sell by Box, Pack, Piece, etc. with automatic quantity conversion
 - Real-time change and balance calculation
 - Duplicate submission prevention (debounced submit)
 - Customer linking on transactions
 
+### 💳 Check Management & Inventory Pull-Back (`/sales`)
+- **Check Lifecycle Tracking**: View check payment status (`Cleared`, `Pending`, `Dishonored`) directly in Sales History
+- **Check Clearance**: Easily mark pending post-dated checks as `Cleared` upon maturity date
+- **Automated Reversal on Bounced Checks**: Trigger item pull-backs on dishonored checks with a mandatory reason. Automatically voids the sale transaction, restores inventory balances using base unit conversion, and logs an immutable `SaleVoidReturn` stock movement
+
 ### 📦 Inventory Management (`/inventory`)
 - **Dual-ledger invariant**: every stock change creates an immutable `StockMovement` record inside a DB transaction
 - Negative stock prevention enforced at the service layer
 - Manual stock adjustments with mandatory reason field
-- Low-stock badge alerts based on configurable `ReorderLevel`
-- Full movement history per product (PurchaseIn, SaleOut, AdjustmentIn, AdjustmentOut)
+- Low-stock badge alerts based on configurable `ReorderLevel` (excluding zero-stock items)
+- Dedicated **Zero Balance (Depleted)** tracking for out-of-stock products
+- Full movement history per product (PurchaseIn, SaleOut, AdjustmentIn, AdjustmentOut, SaleVoidReturn)
 
 ### 🛍️ Products (`/products`)
 - Full product CRUD with SKU, category, unit of measure, cost price, selling price, and reorder level
@@ -136,11 +143,11 @@ The script will automatically:
 - Sales trend charts (Recharts)
 - Recent transactions feed
 
-### 📈 Reports (`/reports`)
-- **Sales Report** — date-range revenue, units sold, gross profit with ₱ Philippine Peso formatting
-- **Inventory Report** — current stock levels, value on hand, movement summary
-- **Profit Report** — cost vs. revenue breakdown, margin analysis
-- Exportable data views
+### 📈 Reports & PDF Export (`/reports`)
+- **Sales & Margin Report** — date-range revenue, units sold, COGS, gross margin performance with ₱ Philippine Peso formatting
+- **Voided Sales & Check Reversals** — detailed table on page and PDF reflecting voided sales, Delivery Receipt (DR #), Invoice #, Customer Name, Check #, Bank Name, and dishonor/void reasons (placed directly below Daily Sales & Margin Breakdown in PDF)
+- **Inventory Health Matrix** — current stock levels, capital allocation on hand, separate threshold alerts for low-stock vs zero-stock items
+- **3-Page Operational PDF Export** — formatted PDF report download for executive and audit reviews
 
 ### ⚙️ Settings (`/settings`)
 - **Units of Measure** — manage Pcs, Kg, Box, Tin, Pack, etc.
@@ -195,13 +202,13 @@ docker exec -i swiftsale_postgres psql -U postgres swiftsale_db < backup_YYYYMMD
 | `ProductsController` | `/api/products` | CRUD, search by SKU/name |
 | `CategoriesController` | `/api/categories` | CRUD, product listing per category |
 | `InventoryController` | `/api/inventory` | Balances, adjustments, movement history |
-| `SalesController` | `/api/sales` | Create sale, list, detail |
+| `SalesController` | `/api/sales` | Create sale, list, detail, mark check cleared, dishonor/pull-back sale |
 | `PurchasesController` | `/api/purchases` | Create PO, receive, list |
 | `CustomersController` | `/api/customers` | CRUD, transaction history |
 | `UsersController` | `/api/users` | Admin user management |
 | `UnitsController` | `/api/units` | Units of Measure CRUD |
 | `DashboardController` | `/api/dashboard` | KPI aggregates |
-| `ReportsController` | `/api/reports` | Sales/Inventory/Profit reports |
+| `ReportsController` | `/api/reports` | Sales/Inventory/Profit reports, voided sales, PDF report generation |
 | `RemoteAccessController` | `/api/remote-access` | ngrok tunnel management |
 
 Full interactive documentation: **http://localhost:5126/swagger**

@@ -75,6 +75,19 @@ public class ReportsController : ControllerBase
     }
 
     /// <summary>
+    /// Retrieves list of voided sales with customer, delivery receipt, check details, and reasons.
+    /// </summary>
+    [HttpGet("voided")]
+    [ProducesResponseType(typeof(List<VoidedSaleDetailDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<List<VoidedSaleDetailDto>>> GetVoidedSales(
+        [FromQuery] ReportFilterParams filters,
+        CancellationToken cancellationToken = default)
+    {
+        var voidedSales = await _reportingService.GetVoidedSalesAsync(filters, cancellationToken);
+        return Ok(voidedSales);
+    }
+
+    /// <summary>
     /// Generates and streams a 3-page printable PDF operational report document (Executive Overview, Top Products, Slow-Moving Inventory).
     /// </summary>
     [HttpGet("export/pdf")]

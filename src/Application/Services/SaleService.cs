@@ -158,26 +158,62 @@ public class SaleService : ISaleService
         sale.Total = subtotal - totalDiscount;
 
         // Process Payments
-        decimal paidAmount = 0m;
+        decimal clearedPaidAmount = 0m;
         if (dto.Payments != null && dto.Payments.Count > 0)
         {
             foreach (var paymentDto in dto.Payments)
             {
-                paidAmount += paymentDto.Amount;
+                if (paymentDto.Method == PaymentMethod.Check || paymentDto.Method == PaymentMethod.PostDatedCheck)
+                {
+                    if (string.IsNullOrWhiteSpace(paymentDto.BankName) || string.IsNullOrWhiteSpace(paymentDto.CheckNumber) || !paymentDto.CheckDate.HasValue)
+                    {
+                        throw new BusinessRuleException("Bank name, check number, and check date are required for check payments.");
+                    }
+                }
+
+                PaymentStatus status;
+                if (paymentDto.Status.HasValue)
+                {
+                    status = paymentDto.Status.Value;
+                }
+                else if (paymentDto.Method == PaymentMethod.PostDatedCheck || (paymentDto.CheckDate.HasValue && paymentDto.CheckDate.Value.Date > DateTime.UtcNow.Date))
+                {
+                    status = PaymentStatus.Pending;
+                }
+                else
+                {
+                    status = PaymentStatus.Cleared;
+                }
+
+                if (status == PaymentStatus.Cleared)
+                {
+                    clearedPaidAmount += paymentDto.Amount;
+                }
+
                 sale.Payments.Add(new Payment
                 {
                     Id = Guid.NewGuid(),
                     SaleId = saleId,
                     Amount = paymentDto.Amount,
                     Method = paymentDto.Method,
+                    Status = status,
                     ReferenceNo = paymentDto.ReferenceNo?.Trim(),
+                    BankName = paymentDto.BankName?.Trim(),
+                    CheckNumber = paymentDto.CheckNumber?.Trim(),
+                    CheckDate = NormalizeToUtc(paymentDto.CheckDate),
+                    ClearedDate = status == PaymentStatus.Cleared ? DateTime.UtcNow : null,
                     PaymentDate = DateTime.UtcNow
                 });
             }
         }
 
-        sale.PaidAmount = paidAmount;
-        sale.Balance = sale.Total - paidAmount;
+        sale.PaidAmount = clearedPaidAmount;
+        sale.Balance = Math.Max(0, sale.Total - clearedPaidAmount);
+
+        if (sale.Balance > 0)
+        {
+            sale.Status = SaleStatus.PendingClearance;
+        }
 
         await _db.Sales.AddAsync(sale, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
@@ -261,20 +297,153 @@ public class SaleService : ISaleService
             throw new BusinessRuleException($"Cannot add payment to voided sale '{sale.InvoiceNo}'.");
         }
 
+        if (dto.Method == PaymentMethod.Check || dto.Method == PaymentMethod.PostDatedCheck)
+        {
+            if (string.IsNullOrWhiteSpace(dto.BankName) || string.IsNullOrWhiteSpace(dto.CheckNumber) || !dto.CheckDate.HasValue)
+            {
+                throw new BusinessRuleException("Bank name, check number, and check date are required for check payments.");
+            }
+        }
+
+        PaymentStatus status;
+        if (dto.Status.HasValue)
+        {
+            status = dto.Status.Value;
+        }
+        else if (dto.Method == PaymentMethod.PostDatedCheck || (dto.CheckDate.HasValue && dto.CheckDate.Value.Date > DateTime.UtcNow.Date))
+        {
+            status = PaymentStatus.Pending;
+        }
+        else
+        {
+            status = PaymentStatus.Cleared;
+        }
+
         sale.Payments.Add(new Payment
         {
             Id = Guid.NewGuid(),
             SaleId = sale.Id,
             Amount = dto.Amount,
             Method = dto.Method,
+            Status = status,
             ReferenceNo = dto.ReferenceNo?.Trim(),
+            BankName = dto.BankName?.Trim(),
+            CheckNumber = dto.CheckNumber?.Trim(),
+            CheckDate = NormalizeToUtc(dto.CheckDate),
+            ClearedDate = status == PaymentStatus.Cleared ? DateTime.UtcNow : null,
             PaymentDate = DateTime.UtcNow
         });
 
-        sale.PaidAmount += dto.Amount;
-        sale.Balance = sale.Total - sale.PaidAmount;
+        var clearedPaidAmount = sale.Payments.Where(p => p.Status == PaymentStatus.Cleared).Sum(p => p.Amount);
+        sale.PaidAmount = clearedPaidAmount;
+        sale.Balance = Math.Max(0, sale.Total - clearedPaidAmount);
+
+        if (sale.Balance == 0 && sale.Status == SaleStatus.PendingClearance)
+        {
+            sale.Status = SaleStatus.Completed;
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        return await GetByIdAsync(sale.Id, cancellationToken);
+    }
+
+    public async Task<SaleDto> ClearCheckPaymentAsync(Guid paymentId, CancellationToken cancellationToken = default)
+    {
+        var payment = await _db.Payments
+            .Include(p => p.Sale)
+            .FirstOrDefaultAsync(p => p.Id == paymentId, cancellationToken)
+            ?? throw new NotFoundException(nameof(Payment), paymentId);
+
+        if (payment.Status == PaymentStatus.Cleared)
+        {
+            throw new BusinessRuleException("Payment is already marked as cleared.");
+        }
+
+        payment.Status = PaymentStatus.Cleared;
+        payment.ClearedDate = DateTime.UtcNow;
+
+        if (payment.Sale != null)
+        {
+            var sale = payment.Sale;
+            var allPayments = await _db.Payments.Where(p => p.SaleId == sale.Id).ToListAsync(cancellationToken);
+            var clearedPaidAmount = allPayments.Where(p => p.Status == PaymentStatus.Cleared).Sum(p => p.Amount);
+
+            sale.PaidAmount = clearedPaidAmount;
+            sale.Balance = Math.Max(0, sale.Total - clearedPaidAmount);
+
+            if (sale.Balance == 0 && sale.Status == SaleStatus.PendingClearance)
+            {
+                sale.Status = SaleStatus.Completed;
+            }
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return await GetByIdAsync(payment.SaleId, cancellationToken);
+    }
+
+    public async Task<SaleDto> DishonorCheckAndReturnSaleAsync(Guid saleId, Guid paymentId, string reason, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await _db.BeginTransactionAsync(cancellationToken);
+
+        var sale = await _db.Sales
+            .Include(s => s.Customer)
+            .Include(s => s.Payments)
+            .Include(s => s.Items)
+                .ThenInclude(i => i.Product)
+                    .ThenInclude(p => p!.InventoryBalance)
+            .FirstOrDefaultAsync(s => s.Id == saleId, cancellationToken)
+            ?? throw new NotFoundException(nameof(Sale), saleId);
+
+        var payment = sale.Payments.FirstOrDefault(p => p.Id == paymentId)
+            ?? throw new NotFoundException(nameof(Payment), paymentId);
+
+        // Step 1: Mark Payment as Dishonored
+        payment.Status = PaymentStatus.Dishonored;
+        payment.DishonorReason = string.IsNullOrWhiteSpace(reason) ? "Insufficient funds / NSF" : reason.Trim();
+
+        // Step 2 & 3: Stock Restoration & Void Sale Status
+        if (sale.Status != SaleStatus.Voided)
+        {
+            sale.Status = SaleStatus.Voided;
+
+            foreach (var item in sale.Items)
+            {
+                if (item.Product != null)
+                {
+                    var returnQty = item.BaseQuantityDeducted > 0 ? item.BaseQuantityDeducted : item.Quantity;
+                    var balance = item.Product.InventoryBalance;
+                    if (balance != null)
+                    {
+                        balance.QuantityOnHand += returnQty;
+                    }
+
+                    var unitCost = balance?.AverageCost ?? item.Product.CostPrice;
+                    var checkRef = !string.IsNullOrWhiteSpace(payment.CheckNumber) ? payment.CheckNumber : payment.ReferenceNo ?? "N/A";
+
+                    var movement = new StockMovement
+                    {
+                        Id = Guid.NewGuid(),
+                        ProductId = item.ProductId,
+                        Type = StockMovementType.SaleVoidReturn,
+                        Quantity = returnQty,
+                        UnitCost = unitCost,
+                        ReferenceType = "CheckBouncedReturn",
+                        ReferenceId = sale.Id,
+                        Reason = $"Item pull-out: Bounced Check #{checkRef} (Inv #{sale.InvoiceNo}) - {payment.DishonorReason}",
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    await _db.StockMovements.AddAsync(movement, cancellationToken);
+                }
+            }
+        }
+
+        var clearedPaidAmount = sale.Payments.Where(p => p.Status == PaymentStatus.Cleared).Sum(p => p.Amount);
+        sale.PaidAmount = clearedPaidAmount;
+        sale.Balance = Math.Max(0, sale.Total - clearedPaidAmount);
+
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return await GetByIdAsync(sale.Id, cancellationToken);
     }
@@ -403,8 +572,14 @@ public class SaleService : ISaleService
             p.Id,
             p.Amount,
             p.Method,
+            p.Status,
             p.ReferenceNo,
-            p.PaymentDate
+            p.PaymentDate,
+            p.BankName,
+            p.CheckNumber,
+            p.CheckDate,
+            p.ClearedDate,
+            p.DishonorReason
         )).ToList();
 
         var grossProfit = sale.Total - totalEstimatedCost;
@@ -431,5 +606,13 @@ public class SaleService : ISaleService
             items,
             payments
         );
+    }
+
+    private static DateTime? NormalizeToUtc(DateTime? dt)
+    {
+        if (!dt.HasValue) return null;
+        return dt.Value.Kind == DateTimeKind.Utc
+            ? dt.Value
+            : DateTime.SpecifyKind(dt.Value, DateTimeKind.Utc);
     }
 }
