@@ -110,7 +110,7 @@ public class ReportService : IReportService
         var totalCostVal = items.Sum(i => i.TotalCostValue);
         var totalRetailVal = items.Sum(i => i.TotalRetailValue);
         var lowStockCount = products.Count(p => 
-            p.InventoryBalance != null && p.InventoryBalance.QuantityOnHand <= p.ReorderLevel);
+            p.InventoryBalance != null && p.InventoryBalance.QuantityOnHand > 0m && p.InventoryBalance.QuantityOnHand <= p.ReorderLevel);
 
         return new InventoryReportDto(
             products.Count,

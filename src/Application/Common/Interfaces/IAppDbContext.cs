@@ -18,6 +18,7 @@ public interface IAppDbContext
     DbSet<Payment> Payments { get; }
     DbSet<User> Users { get; }
     DbSet<UnitOfMeasure> UnitsOfMeasure { get; }
+    DbSet<AppSetting> AppSettings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<IDbTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);

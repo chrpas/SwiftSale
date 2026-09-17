@@ -107,8 +107,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-      <div className="bg-white dark:bg-slate-900 border border-[#E1ECE5] dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-[#E1ECE5] dark:border-slate-800 pb-3">
+      <div className="bg-white dark:bg-slate-900 border border-[#E1ECE5] dark:border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col overflow-hidden">
+        {/* Modal Header - Fixed non-scrolling */}
+        <div className="flex items-center justify-between border-b border-[#E1ECE5] dark:border-slate-800 p-6 pb-4 flex-none">
           <div className="flex items-center gap-2 text-[#1D3530] dark:text-white font-bold text-lg">
             <Plus className="w-5 h-5 text-[#0D7A5F]" />
             <span>Add New Product</span>
@@ -121,6 +122,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Modal Body - Scrollable content */}
+        <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4">
 
         {error && (
           <div className="rounded-xl p-3 bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-xs font-medium flex items-start gap-2">
@@ -292,6 +296,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             </button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );

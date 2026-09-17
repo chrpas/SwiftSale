@@ -84,7 +84,6 @@ public class ReportingService : IReportingService, IReportService
             if (qty <= 0m)
             {
                 outOfStockCount++;
-                lowStockCount++;
             }
             else if (qty <= p.ReorderLevel)
             {

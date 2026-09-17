@@ -34,7 +34,7 @@ interface CartLineItem {
   product: Product;
   quantity: number;
   unitPrice: number;
-  discount: number;
+  discountPercent: number;
   unitSold: 'PCS' | 'BOX';
 }
 
@@ -58,7 +58,7 @@ export const PosPage: React.FC = () => {
   const [isCustomerSearchOpen, setIsCustomerSearchOpen] = useState<boolean>(false);
   const customerSearchRef = useRef<HTMLDivElement>(null);
   const [deliveryReceiptNo, setDeliveryReceiptNo] = useState<string>('');
-  const [orderDiscount, setOrderDiscount] = useState<number>(0);
+  const [orderDiscountPercent, setOrderDiscountPercent] = useState<number>(0);
 
   // Payment state
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Cash);
@@ -167,7 +167,7 @@ export const PosPage: React.FC = () => {
             product,
             quantity: 1,
             unitPrice: product.sellingPrice,
-            discount: 0,
+            discountPercent: 0,
             unitSold: 'PCS',
           },
         ];
@@ -257,10 +257,10 @@ export const PosPage: React.FC = () => {
     );
   };
 
-  const updateDiscount = (productId: string, discount: number) => {
+  const updateDiscount = (productId: string, discountPercent: number) => {
     setCart((prev) =>
       prev.map((item) =>
-        item.product.id === productId ? { ...item, discount: Math.max(0, discount) } : item
+        item.product.id === productId ? { ...item, discountPercent: Math.min(100, Math.max(0, discountPercent)) } : item
       )
     );
   };
@@ -271,19 +271,30 @@ export const PosPage: React.FC = () => {
 
   const clearCart = () => {
     setCart([]);
-    setOrderDiscount(0);
+    setOrderDiscountPercent(0);
     setAmountPaid('');
     setDeliveryReceiptNo('');
     setErrorBanner(null);
     searchInputRef.current?.focus();
   };
 
+  // Stock violation check
+  const hasStockViolation = cart.some((item) => {
+    const stock = item.product.quantityOnHand;
+    const piecesPerBox = item.product.piecesPerBox && item.product.piecesPerBox > 0 ? item.product.piecesPerBox : 1;
+    const maxQty = item.unitSold === 'BOX' ? Math.floor(stock / piecesPerBox) : stock;
+    return maxQty <= 0 || item.quantity > maxQty;
+  });
+
   // Financial calculations
-  const cartSubtotal = cart.reduce(
-    (sum, item) => sum + (item.quantity * item.unitPrice - item.discount),
-    0
-  );
-  const cartTotal = Math.max(0, cartSubtotal - orderDiscount);
+  const cartSubtotal = cart.reduce((sum, item) => {
+    const lineSubtotal = item.quantity * item.unitPrice;
+    const lineDiscountAmount = lineSubtotal * ((item.discountPercent || 0) / 100);
+    return sum + (lineSubtotal - lineDiscountAmount);
+  }, 0);
+
+  const orderDiscountAmount = cartSubtotal * ((orderDiscountPercent || 0) / 100);
+  const cartTotal = Math.max(0, cartSubtotal - orderDiscountAmount);
 
   const numericAmountPaid = parseFloat(amountPaid) || 0;
   const changeDue = Math.max(0, numericAmountPaid - cartTotal);
@@ -301,6 +312,11 @@ export const PosPage: React.FC = () => {
       return;
     }
 
+    if (hasStockViolation) {
+      setErrorBanner('Cannot complete sale: Cart contains out-of-stock items or quantity exceeds available stock.');
+      return;
+    }
+
     if (submitting) return; // Prevent double submission
 
     try {
@@ -310,13 +326,25 @@ export const PosPage: React.FC = () => {
       const payload: CreateSaleRequest = {
         customerId: selectedCustomerId || null,
         deliveryReceiptNo: deliveryReceiptNo.trim() || undefined,
-        items: cart.map((item) => ({
-          productId: item.product.id,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          discount: item.discount,
-          unitSold: item.unitSold,
-        })),
+        items: cart.map((item) => {
+          const lineSubtotal = item.quantity * item.unitPrice;
+          const lineDiscountAmount = lineSubtotal * ((item.discountPercent || 0) / 100);
+          const lineAfterLineDiscount = lineSubtotal - lineDiscountAmount;
+          
+          let totalItemDiscount = lineDiscountAmount;
+          if (cartSubtotal > 0 && orderDiscountAmount > 0) {
+            const itemShareOfOrderDiscount = (lineAfterLineDiscount / cartSubtotal) * orderDiscountAmount;
+            totalItemDiscount += itemShareOfOrderDiscount;
+          }
+
+          return {
+            productId: item.product.id,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discount: Math.round(totalItemDiscount * 100) / 100,
+            unitSold: item.unitSold,
+          };
+        }),
         payments: [
           {
             amount: numericAmountPaid > 0 ? numericAmountPaid : cartTotal,
@@ -474,7 +502,7 @@ export const PosPage: React.FC = () => {
                       <th className="py-3 px-4 text-center">Unit</th>
                       <th className="py-3 px-4">Unit Price</th>
                       <th className="py-3 px-4 text-center">Quantity</th>
-                      <th className="py-3 px-4">Discount</th>
+                      <th className="py-3 px-4">Discount (%)</th>
                       <th className="py-3 px-4 text-right">Line Total</th>
                       <th className="py-3 px-4 text-center">Action</th>
                     </tr>
@@ -486,7 +514,8 @@ export const PosPage: React.FC = () => {
                       const availableBoxes = Math.floor(stock / piecesPerBox);
                       const maxQty = item.unitSold === 'BOX' ? availableBoxes : stock;
                       const isExceedingStock = maxQty > 0 ? item.quantity > maxQty : stock <= 0;
-                      const lineTotal = item.quantity * item.unitPrice - item.discount;
+                      const lineDiscountAmount = (item.quantity * item.unitPrice) * ((item.discountPercent || 0) / 100);
+                      const lineTotal = item.quantity * item.unitPrice - lineDiscountAmount;
 
                       return (
                         <tr key={item.product.id} className="hover:bg-[#F8FAFC] transition-colors">
@@ -552,21 +581,27 @@ export const PosPage: React.FC = () => {
                           </td>
                           <td className="py-3 px-4">
                             <div className="relative w-20">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[#64748B] text-xs">
-                                ₱
-                              </span>
                               <input
                                 type="number"
                                 min="0"
+                                max="100"
                                 step="0.5"
-                                value={item.discount || ''}
+                                value={item.discountPercent || ''}
                                 onChange={(e) =>
                                   updateDiscount(item.product.id, parseFloat(e.target.value) || 0)
                                 }
-                                placeholder="0.00"
-                                className="w-full pl-5 pr-2 py-1 rounded-lg border border-[#CBD5E1] bg-white text-[#1D3530] text-xs focus:outline-none focus:border-[#0D7A5F]"
+                                placeholder="0"
+                                className="w-full pl-2 pr-6 py-1 rounded-lg border border-[#CBD5E1] bg-white text-[#1D3530] text-xs font-semibold focus:outline-none focus:border-[#0D7A5F]"
                               />
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[#64748B] text-xs font-bold pointer-events-none">
+                                %
+                              </span>
                             </div>
+                            {(item.discountPercent || 0) > 0 && (
+                              <div className="text-[10px] text-emerald-600 font-medium mt-0.5">
+                                -₱{lineDiscountAmount.toFixed(2)}
+                              </div>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-right font-bold text-[#1D3530]">
                             ₱{lineTotal.toFixed(2)}
@@ -714,20 +749,28 @@ export const PosPage: React.FC = () => {
                 <span className="font-semibold text-slate-200">₱{cartSubtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between items-center text-slate-400">
-                <span>Order Discount</span>
-                <div className="flex items-center gap-1 w-24">
-                  <span className="text-xs text-slate-500">₱</span>
+                <span>Order Discount (%)</span>
+                <div className="flex items-center gap-1 w-24 relative">
                   <input
                     type="number"
                     min="0"
+                    max="100"
                     step="1"
-                    value={orderDiscount || ''}
-                    onChange={(e) => setOrderDiscount(parseFloat(e.target.value) || 0)}
-                    placeholder="0.00"
-                    className="w-full px-2 py-1 rounded-lg border border-slate-700 bg-slate-900 text-slate-200 text-xs text-right focus:outline-none focus:border-indigo-500"
+                    value={orderDiscountPercent || ''}
+                    onChange={(e) => setOrderDiscountPercent(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                    placeholder="0"
+                    className="w-full pl-2 pr-6 py-1 rounded-lg border border-slate-700 bg-slate-900 text-slate-200 text-xs text-right font-semibold focus:outline-none focus:border-indigo-500"
                   />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-bold pointer-events-none">
+                    %
+                  </span>
                 </div>
               </div>
+              {orderDiscountAmount > 0 && (
+                <div className="flex justify-end text-[11px] text-emerald-400 font-medium">
+                  Saved -₱{orderDiscountAmount.toFixed(2)} ({orderDiscountPercent}%)
+                </div>
+              )}
               <div className="pt-2 border-t border-slate-800 flex justify-between items-baseline">
                 <span className="text-base font-bold text-white">Grand Total</span>
                 <span className="text-2xl font-black text-emerald-400">
@@ -837,10 +880,16 @@ export const PosPage: React.FC = () => {
 
             {/* Submit Checkout Button */}
             <div className="pt-2">
+              {hasStockViolation && (
+                <div className="p-2.5 mb-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-medium flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                  <span>Cannot complete sale: Cart contains zero-stock or exceeding items.</span>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleCheckout}
-                disabled={cart.length === 0 || submitting}
+                disabled={cart.length === 0 || submitting || hasStockViolation}
                 className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-base shadow-lg shadow-emerald-900/40 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
               >
                 {submitting ? (

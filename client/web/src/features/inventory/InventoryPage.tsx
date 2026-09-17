@@ -40,7 +40,7 @@ export const InventoryPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [lifecycleFilter, setLifecycleFilter] = useState<'active' | 'discontinued'>('active');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'lowStock' | 'inStock'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'lowStock' | 'outOfStock' | 'inStock'>('all');
   const [bannerMessage, setBannerMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Adjust Stock Modal State
@@ -95,6 +95,13 @@ export const InventoryPage: React.FC = () => {
   const discontinuedBalances = balances.filter((b) => b.isActive === false);
   const currentLifecycleBalances = lifecycleFilter === 'active' ? activeBalances : discontinuedBalances;
 
+  const lowStockBalances = currentLifecycleBalances.filter(
+    (b) => b.quantityOnHand > 0 && (b.isLowStock || b.quantityOnHand <= (b.reorderLevel ?? 0))
+  );
+  const outOfStockBalances = currentLifecycleBalances.filter(
+    (b) => b.quantityOnHand <= 0
+  );
+
   const filteredBalances = currentLifecycleBalances.filter((item) => {
     const matchesSearch =
       item.productSKU.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -103,7 +110,10 @@ export const InventoryPage: React.FC = () => {
     if (!matchesSearch) return false;
 
     if (statusFilter === 'lowStock') {
-      return item.quantityOnHand <= (item.reorderLevel ?? 0);
+      return item.quantityOnHand > 0 && (item.isLowStock || item.quantityOnHand <= (item.reorderLevel ?? 0));
+    }
+    if (statusFilter === 'outOfStock') {
+      return item.quantityOnHand <= 0;
     }
     if (statusFilter === 'inStock') {
       return item.quantityOnHand > 0;
@@ -399,7 +409,19 @@ export const InventoryPage: React.FC = () => {
               }`}
             >
               <AlertTriangle className="w-3 h-3" />
-              <span>Low Stock ({currentLifecycleBalances.filter((b) => b.isLowStock).length})</span>
+              <span>Low Stock ({lowStockBalances.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('outOfStock')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                statusFilter === 'outOfStock'
+                  ? 'bg-rose-500 text-white font-bold shadow-sm'
+                  : 'text-rose-400 hover:text-rose-300'
+              }`}
+            >
+              <AlertCircle className="w-3 h-3" />
+              <span>Out of Stock ({outOfStockBalances.length})</span>
             </button>
           </div>
         </div>
@@ -560,8 +582,9 @@ export const InventoryPage: React.FC = () => {
       {/* Adjust Stock Modal */}
       {isAdjustModalOpen && adjustTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Header - Fixed non-scrolling */}
+            <div className="flex items-center justify-between border-b border-slate-800 p-6 pb-4 flex-none">
               <div className="flex items-center gap-2 text-white font-bold text-lg">
                 <SlidersHorizontal className="w-5 h-5 text-indigo-400" />
                 <span>Adjust Stock</span>
@@ -569,11 +592,14 @@ export const InventoryPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsAdjustModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Modal Body - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4">
 
             {/* Target Item summary */}
             <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 text-xs space-y-1">
@@ -680,6 +706,7 @@ export const InventoryPage: React.FC = () => {
                 </button>
               </div>
             </form>
+            </div>
           </div>
         </div>
       )}

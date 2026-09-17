@@ -121,9 +121,9 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-      <div className="bg-white dark:bg-slate-900 border border-[#E1ECE5] dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-        {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-[#E1ECE5] dark:border-slate-800 pb-3">
+      <div className="bg-white dark:bg-slate-900 border border-[#E1ECE5] dark:border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col overflow-hidden">
+        {/* Modal Header - Fixed non-scrolling */}
+        <div className="flex items-center justify-between border-b border-[#E1ECE5] dark:border-slate-800 p-6 pb-4 flex-none">
           <div className="flex items-center gap-2 text-[#1D3530] dark:text-white font-bold text-lg">
             <Pencil className="w-5 h-5 text-[#0D7A5F]" />
             <span>Edit Product</span>
@@ -136,6 +136,9 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Modal Body - Scrollable content */}
+        <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-5">
 
         {/* Read-Only Info Box (Checkout style) */}
         <div className="rounded-xl p-4 bg-[#F2F7F4] dark:bg-slate-950/70 border border-[#C5DDD0] dark:border-slate-800 space-y-2">
@@ -319,6 +322,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
             </button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );

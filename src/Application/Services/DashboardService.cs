@@ -71,7 +71,7 @@ public class DashboardService : IDashboardService
 
         int totalCount = products.Count;
         int lowStockCount = products.Count(p => 
-            p.InventoryBalance != null && p.InventoryBalance.QuantityOnHand <= p.ReorderLevel);
+            p.InventoryBalance != null && p.InventoryBalance.QuantityOnHand > 0m && p.InventoryBalance.QuantityOnHand <= p.ReorderLevel);
 
         var recentSalesList = sales
             .OrderByDescending(s => s.SaleDate)
@@ -80,7 +80,7 @@ public class DashboardService : IDashboardService
             .ToList();
 
         var lowStockList = products
-            .Where(p => p.InventoryBalance != null && p.InventoryBalance.QuantityOnHand <= p.ReorderLevel)
+            .Where(p => p.InventoryBalance != null && p.InventoryBalance.QuantityOnHand > 0m && p.InventoryBalance.QuantityOnHand <= p.ReorderLevel)
             .Select(p => new SwiftSale.Application.DTOs.Inventory.LowStockProductDto(
                 p.Id,
                 p.SKU,
