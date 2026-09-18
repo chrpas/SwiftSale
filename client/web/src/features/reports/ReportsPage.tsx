@@ -60,6 +60,12 @@ export const ReportsPage: React.FC = () => {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [bannerMessage, setBannerMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
+  // Report Table Pagination
+  const REPORT_PAGE_SIZE = 10;
+  const [voidedPage, setVoidedPage] = useState(1);
+  const [topProductsReportPage, setTopProductsReportPage] = useState(1);
+  const [slowMovingPage, setSlowMovingPage] = useState(1);
+
   // Calculate Start & End Date strings based on current preset
   const getDateRange = useCallback((): { startDate?: string; endDate?: string } => {
     const now = new Date();
@@ -708,6 +714,21 @@ export const ReportsPage: React.FC = () => {
                 </table>
               </div>
             )}
+            {/* Voided Sales Pagination */}
+            {voidedSales.length > REPORT_PAGE_SIZE && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-rose-900/30">
+                <span className="text-xs text-slate-400">
+                  Showing {((Math.min(voidedPage, Math.max(1, Math.ceil(voidedSales.length / REPORT_PAGE_SIZE))) - 1) * REPORT_PAGE_SIZE) + 1}–{Math.min(Math.min(voidedPage, Math.max(1, Math.ceil(voidedSales.length / REPORT_PAGE_SIZE))) * REPORT_PAGE_SIZE, voidedSales.length)} of {voidedSales.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => setVoidedPage((p) => Math.max(1, p - 1))} disabled={voidedPage <= 1} className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed">‹ Prev</button>
+                  {Array.from({ length: Math.max(1, Math.ceil(voidedSales.length / REPORT_PAGE_SIZE)) }, (_, i) => i + 1).map((pg) => (
+                    <button key={pg} type="button" onClick={() => setVoidedPage(pg)} className={`w-8 h-8 rounded-lg text-xs font-semibold transition-colors ${pg === Math.min(voidedPage, Math.max(1, Math.ceil(voidedSales.length / REPORT_PAGE_SIZE))) ? 'bg-rose-600 text-white' : 'border border-slate-700 text-slate-400 hover:bg-slate-800'}`}>{pg}</button>
+                  ))}
+                  <button type="button" onClick={() => setVoidedPage((p) => Math.min(Math.max(1, Math.ceil(voidedSales.length / REPORT_PAGE_SIZE)), p + 1))} disabled={voidedPage >= Math.max(1, Math.ceil(voidedSales.length / REPORT_PAGE_SIZE))} className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed">Next ›</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Row 3: Product Velocity Tables (Tabs for Top Selling & Slow Moving) */}
@@ -717,7 +738,7 @@ export const ReportsPage: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setActiveVelocityTab('top')}
+                  onClick={() => { setActiveVelocityTab('top'); setTopProductsReportPage(1); }}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
                     activeVelocityTab === 'top'
                       ? 'bg-[#0D7A5F] text-white shadow-md'
@@ -738,7 +759,7 @@ export const ReportsPage: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={() => setActiveVelocityTab('slow')}
+                  onClick={() => { setActiveVelocityTab('slow'); setSlowMovingPage(1); }}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
                     activeVelocityTab === 'slow'
                       ? 'bg-amber-600 text-white shadow-md'
@@ -787,7 +808,7 @@ export const ReportsPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
-                      {topProducts.map((p) => (
+                      {topProducts.slice((Math.min(topProductsReportPage, Math.max(1, Math.ceil(topProducts.length / REPORT_PAGE_SIZE))) - 1) * REPORT_PAGE_SIZE, Math.min(topProductsReportPage, Math.max(1, Math.ceil(topProducts.length / REPORT_PAGE_SIZE))) * REPORT_PAGE_SIZE).map((p) => (
                         <tr key={p.productId} className="hover:bg-slate-800/30 transition-colors">
                           <td className="py-3 px-4 font-mono font-semibold text-indigo-300 text-xs">
                             {p.sku}
@@ -828,6 +849,21 @@ export const ReportsPage: React.FC = () => {
                     </tbody>
                   </table>
                 )}
+                {/* Top Products Pagination */}
+                {topProducts.length > REPORT_PAGE_SIZE && (
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-slate-800">
+                    <span className="text-xs text-slate-400">
+                      Showing {((Math.min(topProductsReportPage, Math.max(1, Math.ceil(topProducts.length / REPORT_PAGE_SIZE))) - 1) * REPORT_PAGE_SIZE) + 1}–{Math.min(Math.min(topProductsReportPage, Math.max(1, Math.ceil(topProducts.length / REPORT_PAGE_SIZE))) * REPORT_PAGE_SIZE, topProducts.length)} of {topProducts.length}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => setTopProductsReportPage((p) => Math.max(1, p - 1))} disabled={topProductsReportPage <= 1} className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed">‹ Prev</button>
+                      {Array.from({ length: Math.max(1, Math.ceil(topProducts.length / REPORT_PAGE_SIZE)) }, (_, i) => i + 1).map((pg) => (
+                        <button key={pg} type="button" onClick={() => setTopProductsReportPage(pg)} className={`w-8 h-8 rounded-lg text-xs font-semibold transition-colors ${pg === Math.min(topProductsReportPage, Math.max(1, Math.ceil(topProducts.length / REPORT_PAGE_SIZE))) ? 'bg-[#0D7A5F] text-white' : 'border border-slate-700 text-slate-400 hover:bg-slate-800'}`}>{pg}</button>
+                      ))}
+                      <button type="button" onClick={() => setTopProductsReportPage((p) => Math.min(Math.max(1, Math.ceil(topProducts.length / REPORT_PAGE_SIZE)), p + 1))} disabled={topProductsReportPage >= Math.max(1, Math.ceil(topProducts.length / REPORT_PAGE_SIZE))} className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed">Next ›</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -853,7 +889,7 @@ export const ReportsPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
-                      {slowMoving.map((p) => (
+                      {slowMoving.slice((Math.min(slowMovingPage, Math.max(1, Math.ceil(slowMoving.length / REPORT_PAGE_SIZE))) - 1) * REPORT_PAGE_SIZE, Math.min(slowMovingPage, Math.max(1, Math.ceil(slowMoving.length / REPORT_PAGE_SIZE))) * REPORT_PAGE_SIZE).map((p) => (
                         <tr key={p.productId} className="hover:bg-slate-800/30 transition-colors">
                           <td className="py-3 px-4 font-mono font-semibold text-indigo-300 text-xs">
                             {p.sku}
@@ -893,6 +929,21 @@ export const ReportsPage: React.FC = () => {
                       ))}
                     </tbody>
                   </table>
+                )}
+                {/* Slow Moving Pagination */}
+                {slowMoving.length > REPORT_PAGE_SIZE && (
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-slate-800">
+                    <span className="text-xs text-slate-400">
+                      Showing {((Math.min(slowMovingPage, Math.max(1, Math.ceil(slowMoving.length / REPORT_PAGE_SIZE))) - 1) * REPORT_PAGE_SIZE) + 1}–{Math.min(Math.min(slowMovingPage, Math.max(1, Math.ceil(slowMoving.length / REPORT_PAGE_SIZE))) * REPORT_PAGE_SIZE, slowMoving.length)} of {slowMoving.length}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => setSlowMovingPage((p) => Math.max(1, p - 1))} disabled={slowMovingPage <= 1} className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed">&#8249; Prev</button>
+                      {Array.from({ length: Math.max(1, Math.ceil(slowMoving.length / REPORT_PAGE_SIZE)) }, (_, i) => i + 1).map((pg) => (
+                        <button key={pg} type="button" onClick={() => setSlowMovingPage(pg)} className={`w-8 h-8 rounded-lg text-xs font-semibold transition-colors ${pg === Math.min(slowMovingPage, Math.max(1, Math.ceil(slowMoving.length / REPORT_PAGE_SIZE))) ? 'bg-amber-600 text-white' : 'border border-slate-700 text-slate-400 hover:bg-slate-800'}`}>{pg}</button>
+                      ))}
+                      <button type="button" onClick={() => setSlowMovingPage((p) => Math.min(Math.max(1, Math.ceil(slowMoving.length / REPORT_PAGE_SIZE)), p + 1))} disabled={slowMovingPage >= Math.max(1, Math.ceil(slowMoving.length / REPORT_PAGE_SIZE))} className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed">Next &#8250;</button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}

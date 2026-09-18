@@ -78,22 +78,36 @@ body {
 /* text-white → dark pine on light bg */
 .text-white { color: #1D3530 !important; }
 
-/* Exceptions: white text on colored backgrounds (buttons, badges, avatars) stays white */
-.bg-\[\#0D7A5F\] .text-white,
-.bg-\[\#0B654E\] .text-white,
-[class*="bg-gradient"] .text-white,
-[style*="background: linear-gradient"] .text-white,
-[style*="background: #0D7A5F"] .text-white,
-[style*="background: #0B654E"] .text-white,
-button.btn-login .text-white,
+/* Exceptions: white text on colored buttons, badges, and avatars stays white */
+button.text-white,
+button.text-white *,
+a.text-white,
+a.text-white *,
 .btn-login,
+.btn-login *,
 .btn-primary,
-.user-avatar {
-  color: white !important;
+.btn-primary *,
+.user-avatar,
+.user-avatar * {
+  color: #FFFFFF !important;
+}
+
+button.text-white svg,
+a.text-white svg {
+  stroke: #FFFFFF !important;
+  color: #FFFFFF !important;
 }
 
 /* KPI card number text on white cards: override text-white to dark */
 .rounded-2xl .text-white { color: #1D3530 !important; }
+
+/* But buttons inside .rounded-2xl with text-white MUST still stay white */
+.rounded-2xl button.text-white,
+.rounded-2xl button.text-white *,
+.rounded-2xl a.text-white,
+.rounded-2xl a.text-white * {
+  color: #FFFFFF !important;
+}
 
 /* Amber card text stays amber-coloured */
 .text-amber-400 { color: #D97706 !important; }

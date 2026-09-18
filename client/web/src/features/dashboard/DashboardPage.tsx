@@ -11,6 +11,7 @@ export const DashboardPage: React.FC = () => {
       onAddCustomer={() => navigate('/customers')}
       onAddProduct={() => navigate('/products')}
       onViewReports={() => navigate('/reports')}
+      onViewSalesHistory={() => navigate('/sales')}
     />
   );
 };

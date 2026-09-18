@@ -107,10 +107,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             style={{
               background: 'linear-gradient(135deg, #0D7A5F 0%, #059669 100%)',
               boxShadow: '0 3px 12px rgba(13,122,95,0.3)',
+              color: '#FFFFFF',
             }}
           >
-            <ShoppingCart className="w-4 h-4" />
-            <span>Open POS Terminal</span>
+            <ShoppingCart className="w-4 h-4 text-white" />
+            <span className="text-white">Open POS Terminal</span>
           </NavLink>
         </div>
 

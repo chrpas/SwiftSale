@@ -112,6 +112,7 @@ export interface DashboardContentProps {
   onAddCustomer?: () => void;
   onAddProduct?: () => void;
   onViewReports?: () => void;
+  onViewSalesHistory?: () => void;
 }
 
 export const DashboardContent: React.FC<DashboardContentProps> = ({
@@ -121,6 +122,7 @@ export const DashboardContent: React.FC<DashboardContentProps> = ({
   onAddCustomer,
   onAddProduct,
   onViewReports,
+  onViewSalesHistory,
 }) => {
   const auth = useAuth();
   const [data, setData] = useState<DashboardSummaryResponse | null>(null);
@@ -129,6 +131,12 @@ export const DashboardContent: React.FC<DashboardContentProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState('Last 7 days');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  // Top Products pagination & filters
+  const [topProductsPage, setTopProductsPage] = useState(1);
+  const [topProductsNameFilter, setTopProductsNameFilter] = useState('');
+  const [topProductsStatusFilter, setTopProductsStatusFilter] = useState<'all' | 'inStock' | 'lowStock' | 'outOfStock'>('all');
+  const TOP_PRODUCTS_PAGE_SIZE = 5;
 
   // Derive dynamic user
   const currentUser: CurrentUser | null =
@@ -557,7 +565,7 @@ export const DashboardContent: React.FC<DashboardContentProps> = ({
                     href="#recent-orders"
                     onClick={(e) => {
                       e.preventDefault();
-                      onViewReports?.();
+                      onViewSalesHistory?.();
                     }}
                     className="text-xs font-semibold text-cyan-600 hover:text-cyan-700 inline-flex items-center gap-1 transition"
                   >
@@ -570,7 +578,6 @@ export const DashboardContent: React.FC<DashboardContentProps> = ({
                     <thead>
                       <tr className="border-b border-slate-100 text-slate-400 font-medium">
                         <th className="pb-2.5 font-medium">#</th>
-                        <th className="pb-2.5 font-medium">Customer</th>
                         <th className="pb-2.5 font-medium text-right">Amount</th>
                         <th className="pb-2.5 font-medium text-right">Status</th>
                       </tr>
@@ -580,14 +587,13 @@ export const DashboardContent: React.FC<DashboardContentProps> = ({
                         Array.from({ length: 5 }).map((_, i) => (
                           <tr key={i}>
                             <td className="py-3"><div className="h-3 w-16 bg-slate-100 rounded animate-pulse" /></td>
-                            <td className="py-3"><div className="h-3 w-28 bg-slate-100 rounded animate-pulse" /></td>
                             <td className="py-3"><div className="h-3 w-16 bg-slate-100 rounded ml-auto animate-pulse" /></td>
                             <td className="py-3"><div className="h-4 w-16 bg-slate-100 rounded-full ml-auto animate-pulse" /></td>
                           </tr>
                         ))
                       ) : (data?.recentSales ?? []).length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="py-8 text-center text-slate-400">
+                          <td colSpan={3} className="py-8 text-center text-slate-400">
                             <div className="flex flex-col items-center justify-center gap-1.5">
                               <ShoppingCart className="w-5 h-5 text-slate-300" />
                               <p className="text-xs font-semibold text-slate-600">No recent sales</p>
@@ -600,9 +606,6 @@ export const DashboardContent: React.FC<DashboardContentProps> = ({
                           <tr key={sale.id} className="hover:bg-slate-50/60 transition-colors">
                             <td className="py-2.5 font-mono text-slate-600 font-medium whitespace-nowrap">
                               {sale.invoiceNo}
-                            </td>
-                            <td className="py-2.5 font-medium text-slate-700 whitespace-nowrap">
-                              {sale.customerName}
                             </td>
                             <td className="py-2.5 font-mono font-semibold text-slate-800 text-right whitespace-nowrap">
                               ₱ {sale.total.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -644,82 +647,173 @@ export const DashboardContent: React.FC<DashboardContentProps> = ({
               </a>
             </div>
 
+            {/* Top Products Filters */}
+            {!loading && (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-3">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={topProductsNameFilter}
+                    onChange={(e) => { setTopProductsNameFilter(e.target.value); setTopProductsPage(1); }}
+                    placeholder="Filter by product name..."
+                    className="w-full pl-3 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 placeholder:text-slate-400 text-xs focus:outline-none focus:border-cyan-400 transition-colors"
+                  />
+                </div>
+                <select
+                  value={topProductsStatusFilter}
+                  onChange={(e) => { setTopProductsStatusFilter(e.target.value as typeof topProductsStatusFilter); setTopProductsPage(1); }}
+                  className="py-1.5 px-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 text-xs focus:outline-none focus:border-cyan-400 transition-colors"
+                >
+                  <option value="all">All Status</option>
+                  <option value="inStock">In Stock</option>
+                  <option value="lowStock">Low Stock</option>
+                  <option value="outOfStock">Out of Stock</option>
+                </select>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-100 text-slate-400 font-medium">
-                    <th className="pb-3 font-medium">Product</th>
-                    <th className="pb-3 font-medium">Category</th>
-                    <th className="pb-3 font-medium text-right">Units Sold</th>
-                    <th className="pb-3 font-medium text-right">Revenue</th>
-                    <th className="pb-3 font-medium text-right">Stock Level</th>
-                    <th className="pb-3 font-medium text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100/80">
-                  {loading ? (
-                    Array.from({ length: 6 }).map((_, i) => (
-                      <tr key={i}>
-                        <td className="py-3"><div className="h-4 w-40 bg-slate-100 rounded animate-pulse" /></td>
-                        <td className="py-3"><div className="h-4 w-20 bg-slate-100 rounded animate-pulse" /></td>
-                        <td className="py-3"><div className="h-4 w-12 bg-slate-100 rounded ml-auto animate-pulse" /></td>
-                        <td className="py-3"><div className="h-4 w-16 bg-slate-100 rounded ml-auto animate-pulse" /></td>
-                        <td className="py-3"><div className="h-4 w-12 bg-slate-100 rounded ml-auto animate-pulse" /></td>
-                        <td className="py-3"><div className="h-4 w-16 bg-slate-100 rounded-full ml-auto animate-pulse" /></td>
-                      </tr>
-                    ))
-                  ) : (
-                    (data?.topSellingProducts ?? []).map((prod) => (
-                      <tr key={prod.productId} className="hover:bg-slate-50/60 transition-colors">
-                        {/* 1. Product (Icon + Name + SKU) */}
-                        <td className="py-3">
-                          <div className="flex items-center gap-3">
-                            {renderProductIcon(prod)}
-                            <div>
-                              <div className="font-semibold text-slate-800 text-xs sm:text-sm">
-                                {prod.productName}
-                              </div>
-                              <div className="font-mono text-[11px] text-slate-400">
-                                {prod.sku}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
+              {(() => {
+                const allProds = data?.topSellingProducts ?? [];
+                const filteredProds = allProds.filter((prod) => {
+                  const nameMatch = !topProductsNameFilter || prod.productName.toLowerCase().includes(topProductsNameFilter.toLowerCase());
+                  let statusMatch = true;
+                  if (topProductsStatusFilter === 'outOfStock') statusMatch = prod.quantityOnHand <= 0;
+                  else if (topProductsStatusFilter === 'lowStock') statusMatch = prod.quantityOnHand > 0 && prod.quantityOnHand <= prod.reorderLevel;
+                  else if (topProductsStatusFilter === 'inStock') statusMatch = prod.quantityOnHand > prod.reorderLevel;
+                  return nameMatch && statusMatch;
+                });
+                const totalPages = Math.max(1, Math.ceil(filteredProds.length / TOP_PRODUCTS_PAGE_SIZE));
+                const safePage = Math.min(topProductsPage, totalPages);
+                const pagedProds = filteredProds.slice((safePage - 1) * TOP_PRODUCTS_PAGE_SIZE, safePage * TOP_PRODUCTS_PAGE_SIZE);
 
-                        {/* 2. Category */}
-                        <td className="py-3">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-slate-600 bg-slate-100 border border-slate-200/60"
-                            style={{ backgroundColor: '#F1F5F9', color: '#475569', borderColor: '#E2E8F0' }}
+                return (
+                  <>
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-slate-400 font-medium">
+                          <th className="pb-3 font-medium">Product</th>
+                          <th className="pb-3 font-medium">Category</th>
+                          <th className="pb-3 font-medium text-center">Units Sold</th>
+                          <th className="pb-3 font-medium text-right">Revenue</th>
+                          <th className="pb-3 font-medium text-right">Stock</th>
+                          <th className="pb-3 font-medium text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100/80">
+                        {loading ? (
+                          Array.from({ length: TOP_PRODUCTS_PAGE_SIZE }).map((_, i) => (
+                            <tr key={i}>
+                              <td className="py-3"><div className="h-4 w-40 bg-slate-100 rounded animate-pulse" /></td>
+                              <td className="py-3"><div className="h-4 w-20 bg-slate-100 rounded animate-pulse" /></td>
+                              <td className="py-3"><div className="h-4 w-12 bg-slate-100 rounded mx-auto animate-pulse" /></td>
+                              <td className="py-3"><div className="h-4 w-16 bg-slate-100 rounded ml-auto animate-pulse" /></td>
+                              <td className="py-3"><div className="h-4 w-12 bg-slate-100 rounded ml-auto animate-pulse" /></td>
+                              <td className="py-3"><div className="h-4 w-16 bg-slate-100 rounded-full ml-auto animate-pulse" /></td>
+                            </tr>
+                          ))
+                        ) : pagedProds.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-8 text-center text-slate-400 text-xs">
+                              No products match the current filter.
+                            </td>
+                          </tr>
+                        ) : (
+                          pagedProds.map((prod) => (
+                            <tr key={prod.productId} className="hover:bg-slate-50/60 transition-colors">
+                              {/* 1. Product (Icon + Name + SKU) */}
+                              <td className="py-3">
+                                <div className="flex items-center gap-3">
+                                  {renderProductIcon(prod)}
+                                  <div>
+                                    <div className="font-semibold text-slate-800 text-xs sm:text-sm">
+                                      {prod.productName}
+                                    </div>
+                                    <div className="font-mono text-[11px] text-slate-400">
+                                      {prod.sku}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* 2. Category */}
+                              <td className="py-3">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-slate-600 bg-slate-100 border border-slate-200/60"
+                                  style={{ backgroundColor: '#F1F5F9', color: '#475569', borderColor: '#E2E8F0' }}
+                                >
+                                  <Tag className="w-3 h-3 text-slate-400" />
+                                  {prod.categoryName || 'General'}
+                                </span>
+                              </td>
+
+                              {/* 3. Units Sold - centered */}
+                              <td className="py-3 font-mono font-semibold text-slate-700 text-center whitespace-nowrap">
+                                {prod.quantitySold.toLocaleString()}
+                              </td>
+
+                              {/* 4. Revenue */}
+                              <td className="py-3 font-mono font-bold text-slate-800 text-right whitespace-nowrap">
+                                ₱ {prod.totalRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+
+                              {/* 5. Stock */}
+                              <td className="py-3 font-mono text-slate-600 text-right whitespace-nowrap">
+                                {prod.quantityOnHand.toLocaleString()}
+                              </td>
+
+                              {/* 6. Dynamic Status Badge */}
+                              <td className="py-3 text-right whitespace-nowrap">
+                                {renderStockBadge(prod.quantityOnHand, prod.reorderLevel)}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+
+                    {/* Pagination Controls */}
+                    {!loading && filteredProds.length > TOP_PRODUCTS_PAGE_SIZE && (
+                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                        <span className="text-[11px] text-slate-400">
+                          Showing {((safePage - 1) * TOP_PRODUCTS_PAGE_SIZE) + 1}–{Math.min(safePage * TOP_PRODUCTS_PAGE_SIZE, filteredProds.length)} of {filteredProds.length}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setTopProductsPage((p) => Math.max(1, p - 1))}
+                            disabled={safePage <= 1}
+                            className="px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                           >
-                            <Tag className="w-3 h-3 text-slate-400" />
-                            {prod.categoryName || 'General'}
-                          </span>
-                        </td>
-
-                        {/* 3. Units Sold */}
-                        <td className="py-3 font-mono font-semibold text-slate-700 text-right whitespace-nowrap">
-                          {prod.quantitySold.toLocaleString()}
-                        </td>
-
-                        {/* 4. Revenue */}
-                        <td className="py-3 font-mono font-bold text-slate-800 text-right whitespace-nowrap">
-                          ₱ {prod.totalRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-
-                        {/* 5. Stock Level */}
-                        <td className="py-3 font-mono text-slate-600 text-right whitespace-nowrap">
-                          {prod.quantityOnHand.toLocaleString()}
-                        </td>
-
-                        {/* 6. Dynamic Status Badge */}
-                        <td className="py-3 text-right whitespace-nowrap">
-                          {renderStockBadge(prod.quantityOnHand, prod.reorderLevel)}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                            ‹ Prev
+                          </button>
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((pg) => (
+                            <button
+                              key={pg}
+                              type="button"
+                              onClick={() => setTopProductsPage(pg)}
+                              className={`w-7 h-7 rounded-lg text-[11px] font-semibold transition-colors ${
+                                pg === safePage
+                                  ? 'bg-cyan-600 text-white'
+                                  : 'border border-slate-200 text-slate-500 hover:bg-slate-50'
+                              }`}
+                            >
+                              {pg}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => setTopProductsPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={safePage >= totalPages}
+                            className="px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Next ›
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>

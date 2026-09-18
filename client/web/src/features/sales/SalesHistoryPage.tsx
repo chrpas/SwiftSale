@@ -29,6 +29,8 @@ export const SalesHistoryPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [salesPage, setSalesPage] = useState(1);
+  const SALES_PAGE_SIZE = 10;
 
   // Void & Check Clearance State
   const [voidTarget, setVoidTarget] = useState<Sale | null>(null);
@@ -64,6 +66,10 @@ export const SalesHistoryPage: React.FC = () => {
       (s.deliveryReceiptNo && s.deliveryReceiptNo.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (s.customerName && s.customerName.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  const salesTotalPages = Math.max(1, Math.ceil(filteredSales.length / SALES_PAGE_SIZE));
+  const salesSafePage = Math.min(salesPage, salesTotalPages);
+  const pagedSales = filteredSales.slice((salesSafePage - 1) * SALES_PAGE_SIZE, salesSafePage * SALES_PAGE_SIZE);
 
   const handleVoidSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -205,7 +211,7 @@ export const SalesHistoryPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {filteredSales.map((sale) => (
+                {pagedSales.map((sale) => (
                   <tr key={sale.id} className="hover:bg-slate-800/30 transition-colors">
                     <td className="py-3 px-4 font-mono">
                       <div className="font-semibold text-indigo-300">{sale.invoiceNo}</div>
@@ -273,6 +279,47 @@ export const SalesHistoryPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Sales Pagination */}
+      {!loading && filteredSales.length > SALES_PAGE_SIZE && (
+        <div className="flex items-center justify-between px-4 py-3 bg-slate-900/70 border border-slate-800 rounded-2xl">
+          <span className="text-xs text-slate-400">
+            Showing {((salesSafePage - 1) * SALES_PAGE_SIZE) + 1}–{Math.min(salesSafePage * SALES_PAGE_SIZE, filteredSales.length)} of {filteredSales.length} records
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setSalesPage((p) => Math.max(1, p - 1))}
+              disabled={salesSafePage <= 1}
+              className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              ‹ Prev
+            </button>
+            {Array.from({ length: salesTotalPages }, (_, i) => i + 1).map((pg) => (
+              <button
+                key={pg}
+                type="button"
+                onClick={() => setSalesPage(pg)}
+                className={`w-8 h-8 rounded-lg text-xs font-semibold transition-colors ${
+                  pg === salesSafePage
+                    ? 'bg-indigo-600 text-white'
+                    : 'border border-slate-700 text-slate-400 hover:bg-slate-800'
+                }`}
+              >
+                {pg}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setSalesPage((p) => Math.min(salesTotalPages, p + 1))}
+              disabled={salesSafePage >= salesTotalPages}
+              className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Next ›
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Invoice Details Modal */}
       {selectedSale && (

@@ -42,6 +42,8 @@ export const InventoryPage: React.FC = () => {
   const [lifecycleFilter, setLifecycleFilter] = useState<'active' | 'discontinued'>('active');
   const [statusFilter, setStatusFilter] = useState<'all' | 'lowStock' | 'outOfStock' | 'inStock'>('all');
   const [bannerMessage, setBannerMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [inventoryPage, setInventoryPage] = useState(1);
+  const INVENTORY_PAGE_SIZE = 10;
 
   // Adjust Stock Modal State
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
@@ -120,6 +122,10 @@ export const InventoryPage: React.FC = () => {
     }
     return true;
   });
+
+  const inventoryTotalPages = Math.max(1, Math.ceil(filteredBalances.length / INVENTORY_PAGE_SIZE));
+  const inventorySafePage = Math.min(inventoryPage, inventoryTotalPages);
+  const pagedBalances = filteredBalances.slice((inventorySafePage - 1) * INVENTORY_PAGE_SIZE, inventorySafePage * INVENTORY_PAGE_SIZE);
 
   // Open adjustment modal for a specific row
   const openAdjustModal = (balance: InventoryBalance) => {
@@ -465,7 +471,7 @@ export const InventoryPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 text-sm">
-                {filteredBalances.map((item) => {
+                {pagedBalances.map((item) => {
                   const isOutOfStock = item.quantityOnHand <= 0;
                   const isLowStock = item.quantityOnHand <= item.reorderLevel;
 
@@ -578,6 +584,47 @@ export const InventoryPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Inventory Pagination */}
+      {!loading && filteredBalances.length > INVENTORY_PAGE_SIZE && (
+        <div className="flex items-center justify-between px-4 py-3 bg-slate-900/70 border border-slate-800 rounded-2xl">
+          <span className="text-xs text-slate-400">
+            Showing {((inventorySafePage - 1) * INVENTORY_PAGE_SIZE) + 1}–{Math.min(inventorySafePage * INVENTORY_PAGE_SIZE, filteredBalances.length)} of {filteredBalances.length} items
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setInventoryPage((p) => Math.max(1, p - 1))}
+              disabled={inventorySafePage <= 1}
+              className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              ‹ Prev
+            </button>
+            {Array.from({ length: inventoryTotalPages }, (_, i) => i + 1).map((pg) => (
+              <button
+                key={pg}
+                type="button"
+                onClick={() => setInventoryPage(pg)}
+                className={`w-8 h-8 rounded-lg text-xs font-semibold transition-colors ${
+                  pg === inventorySafePage
+                    ? 'bg-indigo-600 text-white'
+                    : 'border border-slate-700 text-slate-400 hover:bg-slate-800'
+                }`}
+              >
+                {pg}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setInventoryPage((p) => Math.min(inventoryTotalPages, p + 1))}
+              disabled={inventorySafePage >= inventoryTotalPages}
+              className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Next ›
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Adjust Stock Modal */}
       {isAdjustModalOpen && adjustTarget && (

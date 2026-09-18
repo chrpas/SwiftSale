@@ -8,6 +8,8 @@ export const CustomersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [customersPage, setCustomersPage] = useState(1);
+  const CUSTOMERS_PAGE_SIZE = 10;
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -64,6 +66,10 @@ export const CustomersPage: React.FC = () => {
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (c.phone && c.phone.includes(searchQuery))
   );
+
+  const customersTotalPages = Math.max(1, Math.ceil(filtered.length / CUSTOMERS_PAGE_SIZE));
+  const customersSafePage = Math.min(customersPage, customersTotalPages);
+  const pagedCustomers = filtered.slice((customersSafePage - 1) * CUSTOMERS_PAGE_SIZE, customersSafePage * CUSTOMERS_PAGE_SIZE);
 
   return (
     <div className="space-y-6">
@@ -129,7 +135,7 @@ export const CustomersPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {filtered.map((c) => (
+                {pagedCustomers.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-800/30">
                     <td className="py-3 px-4 font-semibold text-white">{c.name}</td>
                     <td className="py-3 px-4 text-slate-300 font-mono text-xs">{c.phone || '—'}</td>
@@ -145,6 +151,47 @@ export const CustomersPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Customers Pagination */}
+      {!loading && filtered.length > CUSTOMERS_PAGE_SIZE && (
+        <div className="flex items-center justify-between px-4 py-3 bg-slate-900/70 border border-slate-800 rounded-2xl">
+          <span className="text-xs text-slate-400">
+            Showing {((customersSafePage - 1) * CUSTOMERS_PAGE_SIZE) + 1}–{Math.min(customersSafePage * CUSTOMERS_PAGE_SIZE, filtered.length)} of {filtered.length} customers
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCustomersPage((p) => Math.max(1, p - 1))}
+              disabled={customersSafePage <= 1}
+              className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              ‹ Prev
+            </button>
+            {Array.from({ length: customersTotalPages }, (_, i) => i + 1).map((pg) => (
+              <button
+                key={pg}
+                type="button"
+                onClick={() => setCustomersPage(pg)}
+                className={`w-8 h-8 rounded-lg text-xs font-semibold transition-colors ${
+                  pg === customersSafePage
+                    ? 'bg-indigo-600 text-white'
+                    : 'border border-slate-700 text-slate-400 hover:bg-slate-800'
+                }`}
+              >
+                {pg}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setCustomersPage((p) => Math.min(customersTotalPages, p + 1))}
+              disabled={customersSafePage >= customersTotalPages}
+              className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Next ›
+            </button>
+          </div>
+        </div>
+      )}
 
       {isAddOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">

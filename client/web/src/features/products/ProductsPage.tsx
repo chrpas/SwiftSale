@@ -35,6 +35,8 @@ export const ProductsPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [lifecycleFilter, setLifecycleFilter] = useState<'active' | 'discontinued'>('active');
   const [bannerMessage, setBannerMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [productsPage, setProductsPage] = useState(1);
+  const PRODUCTS_PAGE_SIZE = 10;
 
   // Edit Product Modal State (Admin only)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -85,6 +87,10 @@ export const ProductsPage: React.FC = () => {
     const matchesCat = !selectedCategory || p.categoryId === selectedCategory;
     return matchesSearch && matchesCat;
   });
+
+  const productsTotalPages = Math.max(1, Math.ceil(filtered.length / PRODUCTS_PAGE_SIZE));
+  const productsSafePage = Math.min(productsPage, productsTotalPages);
+  const pagedProducts = filtered.slice((productsSafePage - 1) * PRODUCTS_PAGE_SIZE, productsSafePage * PRODUCTS_PAGE_SIZE);
 
   // Open Edit Modal
   const openEditModal = (product: Product) => {
@@ -228,7 +234,7 @@ export const ProductsPage: React.FC = () => {
         <div className="flex items-center gap-1.5 p-1 bg-slate-900/90 border border-slate-800 rounded-xl self-start">
           <button
             type="button"
-            onClick={() => setLifecycleFilter('active')}
+            onClick={() => { setLifecycleFilter('active'); setProductsPage(1); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
               lifecycleFilter === 'active'
                 ? 'bg-indigo-600 text-white shadow-md'
@@ -239,7 +245,7 @@ export const ProductsPage: React.FC = () => {
             <span
               className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
                 lifecycleFilter === 'active'
-                  ? 'bg-indigo-700/80 text-white'
+                  ? 'bg-[#14A380] text-white'
                   : 'bg-slate-800 text-slate-400'
               }`}
             >
@@ -248,7 +254,7 @@ export const ProductsPage: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => setLifecycleFilter('discontinued')}
+            onClick={() => { setLifecycleFilter('discontinued'); setProductsPage(1); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
               lifecycleFilter === 'discontinued'
                 ? 'bg-rose-600 text-white shadow-md'
@@ -326,7 +332,7 @@ export const ProductsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {filtered.map((p) => (
+                {pagedProducts.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-800/30 transition-colors">
                     <td className="py-3 px-4 font-mono font-semibold text-indigo-300">{p.sku}</td>
                     <td className="py-3 px-4 font-semibold text-white">
@@ -411,6 +417,47 @@ export const ProductsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Products Pagination */}
+      {!loading && filtered.length > PRODUCTS_PAGE_SIZE && (
+        <div className="flex items-center justify-between px-4 py-3 bg-slate-900/70 border border-slate-800 rounded-2xl">
+          <span className="text-xs text-slate-400">
+            Showing {((productsSafePage - 1) * PRODUCTS_PAGE_SIZE) + 1}–{Math.min(productsSafePage * PRODUCTS_PAGE_SIZE, filtered.length)} of {filtered.length} products
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setProductsPage((p) => Math.max(1, p - 1))}
+              disabled={productsSafePage <= 1}
+              className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              ‹ Prev
+            </button>
+            {Array.from({ length: productsTotalPages }, (_, i) => i + 1).map((pg) => (
+              <button
+                key={pg}
+                type="button"
+                onClick={() => setProductsPage(pg)}
+                className={`w-8 h-8 rounded-lg text-xs font-semibold transition-colors ${
+                  pg === productsSafePage
+                    ? 'bg-indigo-600 text-white'
+                    : 'border border-slate-700 text-slate-400 hover:bg-slate-800'
+                }`}
+              >
+                {pg}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setProductsPage((p) => Math.min(productsTotalPages, p + 1))}
+              disabled={productsSafePage >= productsTotalPages}
+              className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Next ›
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Edit Product Modal (Admin Only) */}
       <EditProductModal
