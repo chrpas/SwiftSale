@@ -37,11 +37,12 @@ import {
   TopSellingProduct,
   RecentSaleItem,
   SalesTrendItem,
+  DashboardNotificationDto,
   getCurrentUser,
 } from '../../services/dashboardService';
 
 // Re-export interfaces per contract requirements
-export type { CurrentUser, DashboardSummaryResponse, TopSellingProduct, RecentSaleItem, SalesTrendItem };
+export type { CurrentUser, DashboardSummaryResponse, TopSellingProduct, RecentSaleItem, SalesTrendItem, DashboardNotificationDto };
 
 export interface NotificationItem {
   id: string;
@@ -49,33 +50,6 @@ export interface NotificationItem {
   time: string;
   dotColor: string;
 }
-
-const NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: 'n-1',
-    text: 'Order SO-2025-1042 has been marked as completed.',
-    time: '2h ago',
-    dotColor: '#10B981', // green
-  },
-  {
-    id: 'n-2',
-    text: 'Order SO-2025-1041 is partially paid (₱ 5,200 remaining).',
-    time: '4h ago',
-    dotColor: '#F59E0B', // orange
-  },
-  {
-    id: 'n-3',
-    text: 'New customer registered: Best Emballasje.',
-    time: '6h ago',
-    dotColor: '#0EA5E9', // blue
-  },
-  {
-    id: 'n-4',
-    text: 'Stock level for Stretch Film is low (6 units).',
-    time: '8h ago',
-    dotColor: '#10B981', // green
-  },
-];
 
 // Helper to format currency
 const formatCurrency = (val: number, minimumFractionDigits = 0) =>
@@ -897,29 +871,48 @@ export const DashboardContent: React.FC<DashboardContentProps> = ({
           {/* Notifications Panel */}
           <div className="bg-white border border-slate-100/90 rounded-2xl p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-800">Notifications</h2>
-              <a
-                href="#notifications"
-                onClick={(e) => e.preventDefault()}
-                className="text-xs font-semibold text-cyan-600 hover:text-cyan-700 inline-flex items-center gap-1 transition"
-              >
-                View all <ArrowRight className="w-3 h-3" />
-              </a>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-slate-800">Notifications</h2>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live
+                </span>
+              </div>
             </div>
 
-            <div className="space-y-3.5">
-              {NOTIFICATIONS.map((item) => (
-                <div key={item.id} className="flex items-start gap-3 text-xs group">
-                  <span
-                    className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0 transition-transform group-hover:scale-125"
-                    style={{ backgroundColor: item.dotColor }}
-                  />
-                  <div className="flex-1 space-y-0.5">
-                    <p className="text-slate-700 font-medium leading-snug">{item.text}</p>
-                    <p className="text-[11px] text-slate-400 font-normal">{item.time}</p>
-                  </div>
+            <div className="space-y-2">
+              {!data?.notifications || data.notifications.length === 0 ? (
+                <div className="text-center py-6 text-xs text-slate-400">
+                  No recent notifications
                 </div>
-              ))}
+              ) : (
+                data.notifications.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-start gap-3 text-xs group cursor-pointer hover:bg-slate-50 -mx-2 px-2 py-1.5 rounded-xl transition-colors"
+                    onClick={() => {
+                      if (item.targetUrl === '/sales' && onViewSalesHistory) {
+                        onViewSalesHistory();
+                      } else if (item.targetUrl === '/inventory' && onAddProduct) {
+                        onAddProduct();
+                      } else if (item.targetUrl === '/customers' && onAddCustomer) {
+                        onAddCustomer();
+                      }
+                    }}
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0 transition-transform group-hover:scale-125 shadow-xs"
+                      style={{ backgroundColor: item.dotColor || '#0EA5E9' }}
+                    />
+                    <div className="flex-1 space-y-0.5">
+                      <p className="text-slate-700 font-medium leading-snug group-hover:text-slate-900 transition-colors">
+                        {item.message}
+                      </p>
+                      <p className="text-[11px] text-slate-400 font-normal">{item.timeAgo}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

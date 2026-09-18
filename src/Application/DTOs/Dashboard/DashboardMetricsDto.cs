@@ -15,5 +15,6 @@ public record DashboardMetricsDto(
     int TotalProductsCount,
     int LowStockCount,
     List<SaleDto>? RecentSales = null,
-    List<LowStockProductDto>? LowStockProducts = null
+    List<LowStockProductDto>? LowStockProducts = null,
+    List<DashboardNotificationDto>? Notifications = null
 );

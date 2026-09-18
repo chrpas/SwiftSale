@@ -8,10 +8,12 @@ namespace SwiftSale.Application.Services;
 public class DashboardService : IDashboardService
 {
     private readonly IAppDbContext _db;
+    private readonly IRemoteAccessService? _remoteAccessService;
 
-    public DashboardService(IAppDbContext db)
+    public DashboardService(IAppDbContext db, IRemoteAccessService? remoteAccessService = null)
     {
         _db = db;
+        _remoteAccessService = remoteAccessService;
     }
 
     public async Task<DashboardMetricsDto> GetDashboardMetricsAsync(CancellationToken cancellationToken = default)
@@ -95,6 +97,157 @@ public class DashboardService : IDashboardService
                 p.ReorderLevel - (p.InventoryBalance?.QuantityOnHand ?? 0m)
             )).ToList();
 
+        // 4. Dynamic Notifications Feed (Zero Database Bloat - aggregated on-the-fly)
+        var notifications = new List<DashboardNotificationDto>();
+
+        // Event Type 1: Remote Access Tunnel is running
+        if (_remoteAccessService != null)
+        {
+            try
+            {
+                var tunnelStatus = await _remoteAccessService.GetStatusAsync(cancellationToken);
+                if (tunnelStatus.State == SwiftSale.Application.DTOs.RemoteAccess.RemoteAccessStatusState.Running)
+                {
+                    var startedTime = tunnelStatus.StartedAt ?? now;
+                    notifications.Add(new DashboardNotificationDto(
+                        "tunnel-running",
+                        "RemoteAccess",
+                        "Remote Tunnel Active",
+                        string.IsNullOrWhiteSpace(tunnelStatus.PublicUrl)
+                            ? "Remote Access Tunnel is active and running."
+                            : $"Remote Access Tunnel is live at {tunnelStatus.PublicUrl}",
+                        FormatTimeAgo(startedTime),
+                        startedTime,
+                        "#8B5CF6", // Purple
+                        "/settings"
+                    ));
+                }
+            }
+            catch
+            {
+                // Fail gracefully if remote access service is not configured
+            }
+        }
+
+        // Event Type 2: Orders with Pending Clearance (Actionable check payments)
+        var pendingSales = await _db.Sales
+            .AsNoTracking()
+            .Include(s => s.Customer)
+            .Where(s => s.Status == SaleStatus.PendingClearance)
+            .OrderByDescending(s => s.SaleDate)
+            .Take(3)
+            .ToListAsync(cancellationToken);
+
+        foreach (var ps in pendingSales)
+        {
+            var cust = ps.Customer != null ? ps.Customer.Name : "Walk-in";
+            notifications.Add(new DashboardNotificationDto(
+                $"pending-{ps.Id}",
+                "PendingClearance",
+                "Pending Clearance",
+                $"Order {ps.InvoiceNo} ({cust}) awaiting check clearance (₱{ps.Total:N2})",
+                FormatTimeAgo(ps.SaleDate),
+                ps.SaleDate,
+                "#F59E0B", // Amber
+                "/sales"
+            ));
+        }
+
+        // Event Type 3: Low Threshold Items (Products reached/below reorder level)
+        var lowStockAlerts = products
+            .Where(p => p.InventoryBalance != null && p.InventoryBalance.QuantityOnHand <= p.ReorderLevel)
+            .Take(3)
+            .ToList();
+
+        foreach (var lp in lowStockAlerts)
+        {
+            var onHand = lp.InventoryBalance?.QuantityOnHand ?? 0m;
+            notifications.Add(new DashboardNotificationDto(
+                $"low-stock-{lp.Id}",
+                "LowStock",
+                "Low Stock Alert",
+                $"Stock alert: {lp.Name} reached reorder level ({onHand:N0} remaining, reorder at {lp.ReorderLevel:N0})",
+                FormatTimeAgo(now.AddMinutes(-30)),
+                now.AddMinutes(-30),
+                "#EF4444", // Rose/Red
+                "/inventory"
+            ));
+        }
+
+        // Event Type 4: Order status completed
+        var recentCompletedSales = sales
+            .OrderByDescending(s => s.SaleDate)
+            .Take(3)
+            .ToList();
+
+        foreach (var cs in recentCompletedSales)
+        {
+            var cust = cs.Customer != null ? cs.Customer.Name : "Walk-in";
+            notifications.Add(new DashboardNotificationDto(
+                $"completed-{cs.Id}",
+                "OrderCompleted",
+                "Order Completed",
+                $"Order {cs.InvoiceNo} completed for {cust} (₱{cs.Total:N2})",
+                FormatTimeAgo(cs.SaleDate),
+                cs.SaleDate,
+                "#10B981", // Green
+                "/sales"
+            ));
+        }
+
+        // Event Type 5: New order created (recent drafts or non-pending sales)
+        var recentDraftSales = await _db.Sales
+            .AsNoTracking()
+            .Include(s => s.Customer)
+            .Where(s => s.Status == SaleStatus.Draft)
+            .OrderByDescending(s => s.SaleDate)
+            .Take(3)
+            .ToListAsync(cancellationToken);
+
+        foreach (var ds in recentDraftSales)
+        {
+            var cust = ds.Customer != null ? ds.Customer.Name : "Walk-in";
+            notifications.Add(new DashboardNotificationDto(
+                $"draft-{ds.Id}",
+                "NewOrder",
+                "New Order Created",
+                $"New order {ds.InvoiceNo} created for {cust} (₱{ds.Total:N2})",
+                FormatTimeAgo(ds.SaleDate),
+                ds.SaleDate,
+                "#0EA5E9", // Cyan
+                "/sales"
+            ));
+        }
+
+        // Event Type 6: New Customer added
+        var recentCustomers = await _db.Customers
+            .AsNoTracking()
+            .OrderByDescending(c => c.CreatedAt)
+            .Take(3)
+            .ToListAsync(cancellationToken);
+
+        foreach (var rc in recentCustomers)
+        {
+            var custDate = rc.CreatedAt == default ? now.AddHours(-1) : rc.CreatedAt;
+            notifications.Add(new DashboardNotificationDto(
+                $"customer-{rc.Id}",
+                "NewCustomer",
+                "New Customer Added",
+                $"New customer registered: {rc.Name}",
+                FormatTimeAgo(custDate),
+                custDate,
+                "#3B82F6", // Blue
+                "/customers"
+            ));
+        }
+
+        // Prioritize actionable/live items (Remote Access, Pending Clearance) then sort by Timestamp descending, top 5
+        var finalNotifications = notifications
+            .OrderByDescending(n => n.Type == "RemoteAccess" ? 2 : n.Type == "PendingClearance" ? 1 : 0)
+            .ThenByDescending(n => n.Timestamp)
+            .Take(5)
+            .ToList();
+
         return new DashboardMetricsDto(
             todaySales,
             todaySalesList.Count,
@@ -107,7 +260,18 @@ public class DashboardService : IDashboardService
             totalCount,
             lowStockCount,
             recentSalesList,
-            lowStockList
+            lowStockList,
+            finalNotifications
         );
+    }
+
+    private static string FormatTimeAgo(DateTime timestamp)
+    {
+        var span = DateTime.UtcNow - timestamp;
+        if (span.TotalSeconds < 60) return "Just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+        if (span.TotalHours < 24) return $"{(int)span.TotalHours}h ago";
+        if (span.TotalDays < 7) return $"{(int)span.TotalDays}d ago";
+        return timestamp.ToString("MMM d");
     }
 }

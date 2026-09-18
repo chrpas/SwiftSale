@@ -41,6 +41,17 @@ export interface SalesTrendItem {
   amount: number;
 }
 
+export interface DashboardNotificationDto {
+  id: string;
+  type: 'NewOrder' | 'OrderCompleted' | 'PendingClearance' | 'NewCustomer' | 'LowStock' | 'RemoteAccess' | string;
+  title: string;
+  message: string;
+  timeAgo: string;
+  timestamp: string;
+  dotColor: string;
+  targetUrl?: string;
+}
+
 export interface DashboardSummaryResponse {
   todaySales: number;
   todaySalesCount: number;
@@ -59,6 +70,7 @@ export interface DashboardSummaryResponse {
   topSellingProducts: TopSellingProduct[];
   recentSales: RecentSaleItem[];
   salesTrend: SalesTrendItem[];
+  notifications: DashboardNotificationDto[];
 }
 
 export interface BackendSaleItemDto {
@@ -98,6 +110,7 @@ export interface BackendDashboardMetrics {
   lowStockCount: number;
   recentSales?: BackendSaleDto[];
   lowStockProducts?: any[];
+  notifications?: DashboardNotificationDto[];
 }
 
 export interface BackendDailyTrendDto {
@@ -307,6 +320,7 @@ export const dashboardApiService = {
         topSellingProducts,
         recentSales,
         salesTrend: last7Days,
+        notifications: dashboardData?.notifications ?? [],
       };
     } catch (err) {
       console.warn('Could not fetch live dashboard metrics:', getErrorMessage(err));
@@ -329,6 +343,7 @@ export const dashboardApiService = {
         topSellingProducts: [],
         recentSales: [],
         salesTrend: [],
+        notifications: [],
       };
     }
   },
