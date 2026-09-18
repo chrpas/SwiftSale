@@ -256,7 +256,7 @@ public class SaleService : ISaleService
                     balance.QuantityOnHand += returnQty;
                 }
 
-                var unitCost = balance?.AverageCost ?? item.Product.CostPrice;
+                var unitCost = (balance != null && balance.AverageCost > 0m) ? balance.AverageCost : item.Product.CostPrice;
 
                 var movement = new StockMovement
                 {
@@ -418,7 +418,7 @@ public class SaleService : ISaleService
                         balance.QuantityOnHand += returnQty;
                     }
 
-                    var unitCost = balance?.AverageCost ?? item.Product.CostPrice;
+                    var unitCost = (balance != null && balance.AverageCost > 0m) ? balance.AverageCost : item.Product.CostPrice;
                     var checkRef = !string.IsNullOrWhiteSpace(payment.CheckNumber) ? payment.CheckNumber : payment.ReferenceNo ?? "N/A";
 
                     var movement = new StockMovement
@@ -544,7 +544,9 @@ public class SaleService : ISaleService
 
         var items = sale.Items.Select(i =>
         {
-            var avgCost = i.Product?.InventoryBalance?.AverageCost ?? i.Product?.CostPrice ?? 0m;
+            var avgCost = (i.Product?.InventoryBalance != null && i.Product.InventoryBalance.AverageCost > 0m)
+                ? i.Product.InventoryBalance.AverageCost
+                : (i.Product?.CostPrice ?? 0m);
             var baseQty = i.BaseQuantityDeducted > 0 ? i.BaseQuantityDeducted : i.Quantity;
             var lineCost = baseQty * avgCost;
             var lineProfit = i.Total - lineCost;

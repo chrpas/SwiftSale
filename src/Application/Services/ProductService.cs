@@ -172,6 +172,10 @@ public class ProductService : IProductService
         product.PiecesPerBox = dto.PiecesPerBox > 0 ? dto.PiecesPerBox : 1;
         product.Description = dto.Description?.Trim();
         product.CostPrice = dto.CostPrice;
+        if (product.InventoryBalance != null && (product.InventoryBalance.AverageCost == 0m || product.InventoryBalance.QuantityOnHand == 0m))
+        {
+            product.InventoryBalance.AverageCost = dto.CostPrice;
+        }
         product.SellingPrice = dto.SellingPrice;
         product.ReorderLevel = dto.ReorderLevel;
         product.IsActive = dto.IsActive;
@@ -219,7 +223,7 @@ public class ProductService : IProductService
         p.InventoryBalance?.QuantityOnHand ?? 0m,
         p.InventoryBalance?.ReservedQuantity ?? 0m,
         (p.InventoryBalance?.QuantityOnHand ?? 0m) - (p.InventoryBalance?.ReservedQuantity ?? 0m),
-        p.InventoryBalance?.AverageCost ?? p.CostPrice,
+        (p.InventoryBalance != null && p.InventoryBalance.AverageCost > 0m) ? p.InventoryBalance.AverageCost : p.CostPrice,
         p.CreatedAt,
         p.UnitIdentifier,
         p.PiecesPerBox,

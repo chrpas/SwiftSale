@@ -49,7 +49,9 @@ public class ReportingService : IReportingService, IReportService
                     continue;
 
                 decimal itemRevenue = item.Total > 0 ? item.Total : ((item.Quantity * item.UnitPrice) - item.Discount);
-                decimal itemAvgCost = item.Product?.InventoryBalance?.AverageCost ?? item.Product?.CostPrice ?? 0m;
+                decimal itemAvgCost = (item.Product?.InventoryBalance != null && item.Product.InventoryBalance.AverageCost > 0m)
+                    ? item.Product.InventoryBalance.AverageCost
+                    : (item.Product?.CostPrice ?? 0m);
                 decimal baseQty = item.BaseQuantityDeducted > 0 ? item.BaseQuantityDeducted : item.Quantity;
                 decimal itemCost = baseQty * itemAvgCost;
 
@@ -77,7 +79,7 @@ public class ReportingService : IReportingService, IReportService
         foreach (var p in products)
         {
             var qty = p.InventoryBalance?.QuantityOnHand ?? 0m;
-            var avgCost = p.InventoryBalance?.AverageCost ?? p.CostPrice;
+            var avgCost = (p.InventoryBalance != null && p.InventoryBalance.AverageCost > 0m) ? p.InventoryBalance.AverageCost : p.CostPrice;
             totalUnitsOnHand += qty;
             totalInventoryValue += (qty * avgCost);
 
@@ -172,7 +174,9 @@ public class ReportingService : IReportingService, IReportService
                             continue;
 
                         dayRev += i.Total > 0 ? i.Total : ((i.Quantity * i.UnitPrice) - i.Discount);
-                        var avgCost = i.Product?.InventoryBalance?.AverageCost ?? i.Product?.CostPrice ?? 0m;
+                        var avgCost = (i.Product?.InventoryBalance != null && i.Product.InventoryBalance.AverageCost > 0m)
+                            ? i.Product.InventoryBalance.AverageCost
+                            : (i.Product?.CostPrice ?? 0m);
                         var baseQty = i.BaseQuantityDeducted > 0 ? i.BaseQuantityDeducted : i.Quantity;
                         dayCogs += (baseQty * avgCost);
                     }
@@ -224,7 +228,9 @@ public class ReportingService : IReportingService, IReportService
                 decimal rev = g.Sum(x => x.Total > 0 ? x.Total : ((x.Quantity * x.UnitPrice) - x.Discount));
                 decimal cogs = g.Sum(x =>
                 {
-                    var avgCost = x.Product?.InventoryBalance?.AverageCost ?? x.Product?.CostPrice ?? 0m;
+                    var avgCost = (x.Product?.InventoryBalance != null && x.Product.InventoryBalance.AverageCost > 0m)
+                        ? x.Product.InventoryBalance.AverageCost
+                        : (x.Product?.CostPrice ?? 0m);
                     var baseQty = x.BaseQuantityDeducted > 0 ? x.BaseQuantityDeducted : x.Quantity;
                     return baseQty * avgCost;
                 });
@@ -299,7 +305,7 @@ public class ReportingService : IReportingService, IReportService
             if (isSlowMoving)
             {
                 var onHand = p.InventoryBalance?.QuantityOnHand ?? 0m;
-                var avgCost = p.InventoryBalance?.AverageCost ?? p.CostPrice;
+                var avgCost = (p.InventoryBalance != null && p.InventoryBalance.AverageCost > 0m) ? p.InventoryBalance.AverageCost : p.CostPrice;
                 var tiedCost = onHand * avgCost;
 
                 result.Add(new SlowMovingProductDto(
@@ -909,7 +915,7 @@ public class ReportingService : IReportingService, IReportService
         var items = products.Select(p =>
         {
             var onHand = p.InventoryBalance?.QuantityOnHand ?? 0m;
-            var avgCost = p.InventoryBalance?.AverageCost ?? p.CostPrice;
+            var avgCost = (p.InventoryBalance != null && p.InventoryBalance.AverageCost > 0m) ? p.InventoryBalance.AverageCost : p.CostPrice;
             var costVal = onHand * avgCost;
             var retailVal = onHand * p.SellingPrice;
 

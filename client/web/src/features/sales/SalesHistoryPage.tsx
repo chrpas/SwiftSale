@@ -256,7 +256,7 @@ export const SalesHistoryPage: React.FC = () => {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        {isSaleCompleted(sale.status) && (
+                        {isSalePendingClearance(sale.status) && (
                           <button
                             type="button"
                             onClick={() => {

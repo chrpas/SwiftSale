@@ -37,7 +37,9 @@ public class DashboardService : IDashboardService
         decimal todaySales = todaySalesList.Sum(s => s.Total);
         decimal todayCost = todaySalesList.SelectMany(s => s.Items).Sum(i =>
         {
-            var avgCost = i.Product?.InventoryBalance?.AverageCost ?? i.Product?.CostPrice ?? 0m;
+            var avgCost = (i.Product?.InventoryBalance != null && i.Product.InventoryBalance.AverageCost > 0m)
+                ? i.Product.InventoryBalance.AverageCost
+                : (i.Product?.CostPrice ?? 0m);
             var baseQty = i.BaseQuantityDeducted > 0 ? i.BaseQuantityDeducted : i.Quantity;
             return baseQty * avgCost;
         });
@@ -47,7 +49,9 @@ public class DashboardService : IDashboardService
         decimal monthSales = sales.Sum(s => s.Total);
         decimal monthCost = sales.SelectMany(s => s.Items).Sum(i =>
         {
-            var avgCost = i.Product?.InventoryBalance?.AverageCost ?? i.Product?.CostPrice ?? 0m;
+            var avgCost = (i.Product?.InventoryBalance != null && i.Product.InventoryBalance.AverageCost > 0m)
+                ? i.Product.InventoryBalance.AverageCost
+                : (i.Product?.CostPrice ?? 0m);
             var baseQty = i.BaseQuantityDeducted > 0 ? i.BaseQuantityDeducted : i.Quantity;
             return baseQty * avgCost;
         });
@@ -65,7 +69,7 @@ public class DashboardService : IDashboardService
         decimal totalValuation = products.Sum(p =>
         {
             var onHand = p.InventoryBalance?.QuantityOnHand ?? 0m;
-            var avgCost = p.InventoryBalance?.AverageCost ?? p.CostPrice;
+            var avgCost = (p.InventoryBalance != null && p.InventoryBalance.AverageCost > 0m) ? p.InventoryBalance.AverageCost : p.CostPrice;
             return onHand * avgCost;
         });
 

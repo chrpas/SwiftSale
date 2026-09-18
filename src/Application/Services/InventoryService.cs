@@ -193,7 +193,7 @@ public class InventoryService : IInventoryService
         var balance = product.InventoryBalance;
         var onHand = balance?.QuantityOnHand ?? 0m;
         var reserved = balance?.ReservedQuantity ?? 0m;
-        var avgCost = balance?.AverageCost ?? product.CostPrice;
+        var avgCost = (balance != null && balance.AverageCost > 0m) ? balance.AverageCost : product.CostPrice;
 
         return new InventoryBalanceDto(
             product.Id,
@@ -235,7 +235,7 @@ public class InventoryService : IInventoryService
         {
             var onHand = p.InventoryBalance?.QuantityOnHand ?? 0m;
             var reserved = p.InventoryBalance?.ReservedQuantity ?? 0m;
-            var avgCost = p.InventoryBalance?.AverageCost ?? p.CostPrice;
+            var avgCost = (p.InventoryBalance != null && p.InventoryBalance.AverageCost > 0m) ? p.InventoryBalance.AverageCost : p.CostPrice;
 
             return new InventoryBalanceDto(
                 p.Id,
